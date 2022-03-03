@@ -1,0 +1,19 @@
+---
+title: " "
+pagetitle: "Phil Henrickson"
+---
+
+<link rel="stylesheet" href="styles.css" type="text/css">
+<link rel="stylesheet" href="academicicons/css/academicons.min.css"/>
+
+## BGG Projects
+
+Boardgamegeek.com is a treasure chest of data for the world of boardgames. What can we learn from this data? This is a list of ongoing projects I've been working relating using data from BGG.
+
+#### Complexity Adjusted Board Game Ratings
+
+#### [Predicting BGG's Top Upcoming Games](predicting_bgg_outcomes.html)
+
+#### Finding Comparable Board Games
+
+#### Predicting User Collections
