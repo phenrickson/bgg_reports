@@ -6,14 +6,63 @@ pagetitle: "Phil Henrickson"
 <link rel="stylesheet" href="styles.css" type="text/css">
 <link rel="stylesheet" href="academicicons/css/academicons.min.css"/>
 
-## BGG Projects
+## BGG Projects {-}
 
-Boardgamegeek.com is a treasure chest of data for the world of boardgames. What can we learn from this data? This is a list of ongoing projects I've been working relating using data from BGG.
+[**boardgamegeek.com**](https://boardgamegeek.com) is a treasure chest of data if you're into boardgames. What can we learn from this data? 
 
-#### Complexity Adjusted Board Game Ratings
+This is a list of ongoing projects I've been working on with boardgamegeek data using various techniques within data science. For each project, I provide a notebook detailing my work in addition to a more palatable report with the output.
 
-#### [Predicting BGG's Top Upcoming Games](predicting_bgg_outcomes.html)
+### 1. **Predicting BGG's Top Upcoming Games**
 
-#### Finding Comparable Board Games
+<center>
 
-#### Predicting User Collections
+![](/Users/Phil/Documents/projects/bgg_reports/images/predicting_games.png){width=45%} ![](/Users/Phil/Documents/projects/bgg_reports/images/outcome_coefs.png){width=45%}
+
+</center>
+
+[predictions]() \\ [notebook](predicting_bgg_outcomes.html) 
+
+**What upcoming board games are likely to be popular within the BGG community?**
+
+I train a variety of predictive models on historical BGG data in order to estimate a variety of outcomes for newly released games. 
+
+For any given game, I predict its expected:
+
+* average rating
+* number of user ratings
+* geek rating
+* complexity rating
+
+I evaluate the performance of Bayesian linear models and gradient boosted trees (xgboost) in order to understand how game features, designers, artists, and publishers predict each of these outcomes for upcoming board games. 
+
+Why are some games expected to better than others? How accurately can we predict upcoming games? What games are likely to become the new hotness? Take a look to see what the models think.
+
+### 2. **Adjusting BGG Ratings: Complexity and 'The Hotness'**
+
+<center>
+
+![](/Users/Phil/Documents/projects/bgg_reports/images/averages_and_usersrated.png){width=45%} ![](/Users/Phil/Documents/projects/bgg_reports/images/hotness_adjusted.png){width=45%}
+
+</center>
+
+[notebook](adjusting_bgg_ratings.html) \\ [data]()
+
+BGG's geek ratings are well known and pretty well respected by boardgamers But they have a few **issues** that are addressing.
+
+1. If you're **a normal person**, the top rated games on BGG might just be enough to drive you out of the hobby - **the "best" games tend to have a lot of rules**. If you're the sort of person who really just wants to learn something simple and doesn't want to sit through a lecture before playing a game, you should check out this list of **Complexity-Adjusted Ratings**. These ratings can help us figure out which games get the most bang for your complexity buck. I am not the first to develop the method for computing these ratings, which is a very simple statistical model, but I do use that method to keep a list of up-to-date complexity ratings based on my latest pull of games from BGG.
+
+2. **The BGG top 100 skews not only towards complex games, but towards recently published complex games**. Games released in the last 5 years dominate the list, while evergreen classics like Carcassone and Pandemic fall well outside the top 100. This has to do with how the ratings are constructed and that it has not changed over time. I examine what sort of ratings we get if we amend the geek rating formula, and I find it produce a list of top games that is less skewed towards 'the hotness'.
+
+
+
+### 3. **Predicting Reviewer Collections, or How to Create an Artificial Shut Up and Sit Down**
+
+[methodology]() \\ [predictions]()
+
+### 4. **Finding Boardgame "Neighbors"**
+
+[notebook]() \\ [dashboard]()
+
+
+
+
