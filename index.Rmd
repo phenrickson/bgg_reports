@@ -6,13 +6,13 @@ pagetitle: "Phil Henrickson"
 <link rel="stylesheet" href="styles.css" type="text/css">
 <link rel="stylesheet" href="academicicons/css/academicons.min.css"/>
 
-## BGG Projects {-}
+### Boardgame Projects{-}
 
 [**boardgamegeek.com**](https://boardgamegeek.com) is a treasure chest of data if you're into boardgames. What can we learn from this data? 
 
 This is a list of ongoing projects I've been working on with boardgamegeek data using various techniques within data science. For each project, I provide a notebook detailing my work in addition to a more palatable report with the output.
 
-### 1. **Predicting BGG's Top Upcoming Games**
+#### 1. **Predicting BGG's Top Upcoming Games**
 
 <center>
 
@@ -22,9 +22,7 @@ This is a list of ongoing projects I've been working on with boardgamegeek data 
 
 [predictions]() \\ [notebook](predicting_bgg_outcomes.html) 
 
-**What upcoming board games are likely to be popular within the BGG community?**
-
-I train a variety of predictive models on historical BGG data in order to estimate a variety of outcomes for newly released games. 
+What upcoming board games are **likely to be popular within the BGG community?** I train a variety of predictive models on historical BGG data in order to estimate a variety of outcomes for newly released games. 
 
 For any given game, I predict its expected:
 
@@ -37,7 +35,7 @@ I evaluate the performance of Bayesian linear models and gradient boosted trees 
 
 Why are some games expected to better than others? How accurately can we predict upcoming games? What games are likely to become the new hotness? Take a look to see what the models think.
 
-### 2. **Adjusting BGG Ratings: Complexity and 'The Hotness'**
+#### 2. **Adjusting BGG Ratings: Complexity and 'The Hotness'**
 
 <center>
 
@@ -55,11 +53,11 @@ BGG's geek ratings are well known and pretty well respected by boardgamers But t
 
 
 
-### 3. **Predicting Reviewer Collections, or How to Create an Artificial Shut Up and Sit Down**
+#### 3. **Predicting Reviewer Collections, or How to Create an Artificial Shut Up and Sit Down**
 
 [methodology]() \\ [predictions]()
 
-### 4. **Finding Boardgame "Neighbors"**
+#### 4. **Finding Boardgame "Neighbors"**
 
 [notebook]() \\ [dashboard]()
 
