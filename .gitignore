@@ -28,3 +28,4 @@ vignettes/*.pdf
 .Renviron
 user_workflows
 .DS_Store
+models
