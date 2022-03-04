@@ -1,0 +1,2627 @@
+---
+title: "Predicting Upcoming Boardgames"
+output: 
+  html_document:
+    toc: TRUE #adds a Table of Contents
+    number_sections: TRUE #number your headings/sections
+    toc_float: TRUE #let your ToC follow you as you scroll
+    keep_md: no
+    fig.caption: yes
+params:
+  end_training_year: 2019
+  min_ratings: 100
+---
+
+```{r global settings, echo=F, warning=F, message=F, results='hide'}
+
+knitr::opts_chunk$set(echo = F,
+                      error=F,
+                      dev="png",
+                      fig.width = 10,
+                      fig.height = 6)
+
+options(knitr.duplicate.label = "allow")
+
+options(scipen=999)
+
+# load packages to be used
+source(here::here("scripts/load_packages.R"))
+
+# additional libraries
+# parallel
+library(doParallel)
+library(parallelly)
+
+# for stan
+library(brms)
+library(broom.mixed)
+
+# load custom functions to be used
+source(here::here("functions/theme_phil.R"))
+source(here::here("functions/tidy_name_func.R"))
+source(here::here("functions/pivot_and_dummy_types.R"))
+rm(a)
+
+```
+
+```{r flextable settings, echo=F, warning=F, message=F, results='hide'}
+
+#library(webshot2)
+library(flextable)
+set_flextable_defaults(theme_fun = theme_alafoli,
+                       font.color = "grey10",
+  padding.bottom = 6, 
+  padding.top = 6,
+  padding.left = 6,
+  padding.right = 6,
+  background.color = "white")
+
+```
+
+```{r connect to big query and query tables we need, warning=F, message=F, results='hide'}
+
+library(bigrquery)
+
+# get project credentials
+PROJECT_ID <- "gcp-analytics-326219"
+BUCKET_NAME <- "test-bucket"
+
+# authorize
+bq_auth(email = "phil.henrickson@aebs.com")
+
+# establish connection
+bigquerycon<-dbConnect(
+        bigrquery::bigquery(),
+        project = PROJECT_ID,
+        dataset = "bgg"
+)
+
+# query table of game info to most recent load
+active_games<-DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_game_info
+                              where timestamp = (SELECT MAX(timestamp) as most_recent FROM bgg.api_game_info)') %>%
+        select(-starts_with("rank")) %>%
+        mutate(numweights = as.numeric(numweights)) %>%
+        mutate_at(c("averageweight",
+                    "playingtime",
+                    "minplaytime",
+                    "maxplaytime",
+                    "yearpublished"),
+                  ~ case_when(. == 0 ~ NA_real_,
+                              TRUE ~ .))
+
+# ugh, made a mistake in the schema...
+
+# create caption for plots
+my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
+                        paste("Data and analysis at github.com/phenrickson/bgg"), sep="\n")))
+
+
+# long table with game type variables
+game_types= DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_game_categories')
+
+```
+
+# What is this Analysis? {-}
+
+This notebook details my approach to building predictive models for newly released games on boardgamegeek.com (BGG). Specifically, I am interested in taking any newly released boardgame and, using features that are available at the time of its release, estimating how it will be received on BGG: its average rating, number of user ratings, and complexity rating. 
+
+While the goal of this project is ultimately to yield accurate predictions for upcoming games, we are also interested in understanding what the models learn. What features of games are associated with high/low average rating? Why do some games receive high numbers of user ratings? What types of games are the most complex?
+
+To answer these questions, we'll make use of historical data from boardgamegeek. We will connect to a database on GCP containing a variety of tables on game features and their current ratings on BGG. For this analysis, in training models, we will restrict ourserlves to games published through `r params$end_training_year`. We will validate the performance of our models by evaluating their performance in predicting games published in `r params$end_training_year + 1`.
+
+# The Data
+
+The data we are using comes from boardgamegeek.com, which we access by using the open BGG API. We are training models on data that last pulled from BGG on **`r max(as.Date(active_games$timestamp))`**.
+
+We will be training models at the *game-level*, where every row corresponds to one game and every column corresponds to a feature of the game. As of this date, there are **`r nrow(active_games)`** on boardgamegeek with at least 30 user ratings.
+
+For the purpose of this analysis, the training set will only include games `r params$end_training_year + 1` that have achieved at least `r params$min_ratings` user ratings. This is a design decision to restrict our sample to games that 1) have received some evaluation from the community and 2) speed up the time in training models. We can later view this as a parameter for tuning, allowing more or less historical games to enter the model for training. Based on some initial tests, `r params$min_ratings` was a useful cutoff point for both model performance and training time.
+
+```{r get basic split of games, echo=F}
+
+# define our training set now for exploration
+train_games = active_games %>%
+        filter(!is.na(yearpublished)) %>% # filtering games with missing yearpublished, which is mostly a mix of games that are prototypes
+        filter(!is.na(averageweight)) %>% # removing games with no votes on complexity
+        filter(numweights > 0) %>% # dont include games that havent had complexity ratings
+        filter(yearpublished <= params$end_training_year) %>% # only include games through 2019
+        filter(usersrated > params$min_ratings) # minimum ratings greater than 100
+
+```
+
+## Outcomes
+
+We are interested in modeling a number of different outcomes: a game's average rating, complexity rating, and number of user ratings.
+
+```{r show distributions for outcomes, fig.height=5, fig.width=10}
+
+train_games %>%
+        mutate(log_usersrated = log(usersrated)) %>%
+        select(game_id, name, yearpublished, average, averageweight, log_usersrated) %>%
+        gather("variable", "value",
+               -game_id, -name, -yearpublished) %>%
+        mutate(dataset = "training") %>%
+        ggplot(., aes(x=value))+
+        geom_histogram(bins = 100)+
+        facet_grid(dataset ~ variable,
+                   scales = "free")+
+        theme_bw(8)
+
+```
+
+These outcomes aren't independent, as complexity and the average rating are highly correlated.
+
+```{r show relationship between ratings an}
+
+library(GGally)
+
+ggpairs(
+        train_games %>%
+        mutate(log_usersrated = log(usersrated)) %>%
+        select(game_id, name, yearpublished, average, averageweight, log_usersrated) %>%
+        select(average,
+               averageweight,
+               log_usersrated),
+        mapping = aes(alpha = 0.025))+
+        theme_bw(8)
+
+```
+
+As we will see, this means if we want to predict a game's average rating, the most important feature is usually its average weight. But because these a game's average rating and complexity are both voted on by the BGG community, we won't know a game's average rating at the time of its release. This means for newly upcoming games, we will first use a model to estimate a game's complexity and then use that estimate as the input into our average rating model.
+
+## Features
+
+What features do we have about games? We have basic information about every game, such as its player count and playing time, and we also have many BGG outcomes, such as the number of comments, number of people trading, which we will not use in predicting the outcomes we care about. We have some missingness present in the playing time variables that we will address in our recipe preparing the data.
+
+```{r examine features of games, warning=F, message=F}
+
+train_games %>%
+        vis_miss()
+
+```
+
+## Handling Categorical Features
+
+We also have a variety of information about game mechanics, categories, artists, publishers, designers, artists, and so on. Some of these categories are not observed for every game, such as if a game doesn't have expansions or integrations with other games.
+
+This means there are **~180 different mechanics, ~7k publishers, ~ 10k designers, and ~ 11k artists** present in our training set. This is good in the sense that we have ample information about games for models to look at and use in training, but bad in the sense that if we threw all of it into a model we would quickly run up against the [the curse of dimensionality](https://en.wikipedia.org/wiki/Curse_of_dimensionality).
+
+
+```{r shwo types}
+
+game_types %>%
+        group_by(type) %>%
+        summarize(n_types = n_distinct(value),
+                  n_games = n_distinct(game_id)) %>%
+        arrange(desc(n_games)) %>%
+        flextable() %>%
+        autofit()
+
+```
+
+
+How can we make use of this information for modeling? We could create **dummy variables** for every different type, but this will quickly create thousands of features, many of which are going to contain little information. We would view this as a P > N problem and let the data speak for itself via methods of feature selection and dimension reduction. 
+
+Alternatively, every game had only one mechanic/designer/publisher, we could **mean encode on the training set**. For instance, instead of using thousands of dummy variables for each designer, we would have one 'designer_mean' feature that is simply the value the designer's mean value in the training set. This can dramatically reduce the dimensionality of categorical features while keeping the information we want.
+
+For our purposes, the hang up with taking a simple mean encoding approach is that a game may have multiple designers, categories, mechanics, artists, and publishers. For designers we might be able to get by with taking the mean *of* the designer means, but it starts to get more complicated with mechanics - most games have multiple different mechanics, and its the combination of different mechanics that are we interested in exploring. The other complication is that some designers have only designed a handful of games, while others have designed hundreds, so the mean may not impart the same amount of information.
+
+On top of all of this, we have to be careful in what features we allow to enter a model, as some of the categories about games are themselves a reflection of the outcomes we want to predict. 
+
+With all this in mind, we'll do bit of inspection to figure out which features of games we'll allow to enter our training recipe, in essence using a manual filtering method to select features. 
+
+```{r filter game types to train}
+
+train_types = game_types %>%
+        filter(type %in% c('designer',
+                           'category',
+                           'publisher',
+                           'mechanic',
+                           'family',
+                           'artist')) %>%
+        filter(game_id %in% train_games$game_id)
+
+```
+
+### Families
+
+One set of features relates to a game's "family", which is sort of a catch all term for various buckets that games might fall into: Kickstarters, dungeon crawls, tableau builders, etc. Some of these are likely to be very useful in training a model, while others should be omitted. We don't, for instance, want to include whether a game has digital implementations, as these are a reflection of a game's popularity. These sets of features also have a very long tail, with some families only having one or two games in them. We'll filter to remove families with near zero variance, removing features on this variable that apply to a little less than 1% of games.
+
+```{r examine average and baverage by family, warning=F, message=F, fig.height=14, fig.width=11}
+
+# set a minimum percentage
+minimum_prop = 0.005
+
+# families
+families = train_types %>%
+        filter(type == 'family') %>%
+        left_join(., train_games,
+                  by = c("game_id"))
+
+# summarize
+summarized_families = families %>%
+        group_by(type, id, value) %>%
+        summarize(mean_bayesaverage = mean(bayesaverage),
+                  mean_average = mean(average),
+                  mean_averageweight = mean(averageweight),
+                  mean_usersrated = mean(log(usersrated)),
+                  n_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        bind_cols(., train_games %>%
+                          summarize(total_games = n_distinct(game_id))) %>%
+        arrange(desc(n_games)) %>%
+        mutate(prop = n_games / total_games) %>%
+        filter(prop > minimum_prop)
+
+# bar chart
+families %>%
+        group_by(value) %>%
+        mutate(n = n()) %>%
+        ungroup() %>%
+        mutate(usersrated = log(usersrated)) %>%
+        select(type, id, value, n, game_id, name, yearpublished, average, bayesaverage, usersrated, averageweight) %>%
+        gather("outcome", "var",
+               -type, -id, -game_id, -name, -yearpublished, -value, -n) %>%
+        group_by(outcome, value) %>%
+        mutate(median = median(var)) %>%
+        ungroup() %>%
+        filter(value %in% (summarized_families %>% 
+                       slice_max(n_games, n = 50, with_ties = F) %>%
+                       pull(value))) %>%
+      #  filter(n > 75) %>%
+        ggplot(., aes(x=reorder_within(value, median, outcome),
+                     # size = usersrated,
+                      by = game_id,
+                      y = var))+
+        geom_point(alpha=0.05,
+                   size = 0.5,
+                   position = position_jitternormal(sd_x = 0.1))+
+        coord_flip()+
+        geom_boxplot(alpha = 0.4,
+                     outlier.shape = NULL,
+                     outlier.alpha =0,
+                     outlier.size=0)+
+        facet_wrap(outcome ~.,
+                   scales = "free")+
+        theme_bw(8)+
+        my_caption+
+        ggtitle("Outcomes by BGG Families",
+                subtitle = "Displaying the top 50 most frequent families on BGG")+
+        xlab("")+
+        scale_x_reordered()
+
+# # make datatablew
+# summarized_families %>%
+#         mutate_if(is.numeric, round, 2) %>%
+#         datatable()
+
+# which family features are we keeping?
+selected_families = summarized_families %>%
+        filter(prop > minimum_prop) %>%
+        filter(!grepl("Admin: Better Description", value)) %>%
+        filter(!grepl("Digital Implementations", value)) %>%
+        filter(!grepl("Misc:", value)) %>%
+        filter(!grepl("Upcoming Releases", value)) %>%
+        filter(!grepl("Components: Game Trayzinside", value)) %>%
+        mutate(tidied = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(tidied = paste("family", tidied, sep="_")) %>%
+        select(type, id, value, tidied)
+
+```
+
+Some features we won't include, such as the Mensa Select or implementations on BoardGameArena, as these are outcomes that typically occur when a game has been popular and shouldn't be used as predictors.
+
+### Categories
+
+We'll do the same thing for categories, but this variable is much smaller and generally pretty well organized.
+
+```{r now look at categories, fig.height=14, fig.width=11}
+
+minimum_prop = 0.005
+
+# categories
+categories = train_types %>%
+        filter(type == 'category') %>%
+        left_join(., train_games,
+                  by = c("game_id"))
+
+# summarize
+summarized_categories = categories %>%
+        group_by(type, id, value) %>%
+        summarize(median_bayesaverage = median(bayesaverage),
+                  median_average = median(average),
+                  median_averageweight = median(averageweight),
+                  median_usersrated = median(log(usersrated)),
+                  n_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        bind_cols(., train_games %>%
+                          summarize(total_games = n_distinct(game_id))) %>%
+        arrange(desc(n_games)) %>%
+        mutate(prop = n_games / total_games) %>%
+        filter(prop > minimum_prop)
+
+# # make datatablew
+# summarized_categories %>%
+#         mutate_if(is.numeric, round, 2) %>%
+#         datatable()
+# # 
+# # bar chart
+# summarized_categories %>%
+#         ggplot(., aes(x=reorder(value, n_games),
+#                       y=n_games))+
+#         geom_col()+
+#         theme_phil()+
+#         coord_flip()+
+#         xlab("")+
+#         ylab("number of games")
+
+# jitter chart
+# bar chart
+categories %>%
+        group_by(value) %>%
+        mutate(n = n()) %>%
+        ungroup() %>%
+        mutate(usersrated = log(usersrated)) %>%
+        select(type, id, value, n, game_id, name, yearpublished, average, bayesaverage, usersrated, averageweight) %>%
+        gather("outcome", "var",
+               -type, -id, -game_id, -name, -yearpublished, -value, -n) %>%
+        group_by(outcome, value) %>%
+        mutate(median = median(var)) %>%
+        ungroup() %>%
+        filter(value %in% (summarized_categories %>% 
+                       slice_max(n_games, n = 50, with_ties = F) %>%
+                       pull(value))) %>%
+      #  filter(n > 75) %>%
+        ggplot(., aes(x=reorder_within(value, median, outcome),
+                     # size = usersrated,
+                      by = game_id,
+                      y = var))+
+        geom_point(alpha=0.05,
+                   size = 0.5,
+                   position = position_jitternormal(sd_x = 0.1))+
+        coord_flip()+
+        geom_boxplot(alpha = 0.4,
+                     outlier.shape = NULL,
+                     outlier.alpha =0,
+                     outlier.size=0)+
+        facet_wrap(outcome ~.,
+                   scales = "free")+
+        theme_bw(8)+
+        my_caption+
+        ggtitle("Outcomes by BGG Categories",
+                subtitle = "Displaying the top 50 most frequent categories on BGG")+
+        xlab("")+
+        scale_x_reordered()
+
+
+# which category features are we keeping?
+selected_categories = summarized_categories %>%
+        filter(prop > minimum_prop) %>%
+        mutate(tidied = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(tidied = paste("category", tidied, sep="_")) %>%
+        select(type, id, value, tidied)
+
+```
+
+We'll include all of these, though there will likely be some overlap between these and other features which we can take care of with a correlation filter.
+
+### Mechanics
+
+Mechanics are also pretty well organized, so we don't have to do much filtering.
+
+```{r now look at mechanics, fig.height=14, fig.width=11}
+
+minimum_prop = 0.005
+
+# mechanics
+mechanics = train_types %>%
+        filter(type == 'mechanic') %>%
+        left_join(., train_games,
+                  by = c("game_id"))
+
+# summarize
+summarized_mechanics = mechanics %>%
+        group_by(type, id, value) %>%
+        summarize(median_bayesaverage = median(bayesaverage),
+                  median_average = median(average),
+                  median_averageweight = median(averageweight),
+                  median_usersrated = median(log(usersrated)),
+                  n_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        bind_cols(., train_games %>%
+                          summarize(total_games = n_distinct(game_id))) %>%
+        arrange(desc(n_games)) %>%
+        mutate(prop = n_games / total_games) %>%
+        filter(prop > minimum_prop)
+
+# # make datatablew
+# summarized_mechanics %>%
+#         mutate_if(is.numeric, round, 2) %>%
+#         datatable()
+# # 
+# # bar chart
+# summarized_mechanics %>%
+#         ggplot(., aes(x=reorder(value, n_games),
+#                       y=n_games))+
+#         geom_col()+
+#         theme_phil()+
+#         coord_flip()+
+#         xlab("")+
+#         ylab("number of games")
+
+# jitter chart
+# bar chart
+mechanics %>%
+        group_by(value) %>%
+        mutate(n = n()) %>%
+        ungroup() %>%
+        mutate(usersrated = log(usersrated)) %>%
+        select(type, id, value, n, game_id, name, yearpublished, average, bayesaverage, usersrated, averageweight) %>%
+        gather("outcome", "var",
+               -type, -id, -game_id, -name, -yearpublished, -value, -n) %>%
+        group_by(outcome, value) %>%
+        mutate(median = median(var)) %>%
+        ungroup() %>%
+        filter(value %in% (summarized_mechanics %>% 
+                       slice_max(n_games, n = 50, with_ties = F) %>%
+                       pull(value))) %>%
+      #  filter(n > 75) %>%
+        ggplot(., aes(x=reorder_within(value, median, outcome),
+                     # size = usersrated,
+                      by = game_id,
+                      y = var))+
+        geom_point(alpha=0.05,
+                   size = 0.5,
+                   position = position_jitternormal(sd_x = 0.1))+
+        coord_flip()+
+        geom_boxplot(alpha = 0.4,
+                     outlier.shape = NULL,
+                     outlier.alpha =0,
+                     outlier.size=0)+
+        facet_wrap(outcome ~.,
+                   scales = "free")+
+        theme_bw(8)+
+        my_caption+
+        ggtitle("Outcomes by BGG Mechanics",
+                subtitle = "Displaying the top 50 most frequent mechanics on BGG")+
+        xlab("")+
+        scale_x_reordered()
+
+
+# which mechanic features are we keeping?
+selected_mechanics = summarized_mechanics %>%
+        filter(prop > minimum_prop) %>%
+        mutate(tidied = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(tidied = paste("mechanic", tidied, sep="_")) %>%
+        select(type, id, value, tidied)
+
+```
+
+We'll just keep all of the mechanics, as these are the main features of games that we'll focus our attention on.
+
+### Designers and Artists
+
+How should we handle artist and designer effects? We'll use a much lower minimum proption here, as very few designers would have designed ~ 100 games. 
+
+```{r look at designers, warning=F, message=F, fig.height=14, fig.width=11}
+
+designer_prop = .001
+        
+# designers
+designers = train_types %>%
+        filter(type == 'designer') %>%
+        left_join(., train_games,
+                  by = c("game_id"))
+
+# summarize
+summarized_designers = designers %>%
+        group_by(type, id, value) %>%
+        summarize(median_bayesaverage = median(bayesaverage),
+                  median_average = median(average),
+                  median_averageweight = median(averageweight),
+                  median_usersrated = median(log(usersrated)),
+                  n_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        bind_cols(., train_games %>%
+                          summarize(total_games = n_distinct(game_id))) %>%
+        arrange(desc(n_games)) %>%
+        mutate(prop = n_games / total_games) %>%
+        filter(prop > designer_prop)
+#%>%
+
+# bar chart
+designers %>%
+        group_by(value) %>%
+        mutate(n = n()) %>%
+        ungroup() %>%
+        mutate(usersrated = log(usersrated)) %>%
+        select(type, id, value, n, game_id, name, yearpublished, average, bayesaverage, usersrated, averageweight) %>%
+        gather("outcome", "var",
+               -type, -id, -game_id, -name, -yearpublished, -value, -n) %>%
+        group_by(outcome, value) %>%
+        mutate(median = median(var)) %>%
+        ungroup() %>%
+        filter(value %in% (summarized_designers %>% 
+                       slice_max(n_games, n = 50, with_ties = F) %>%
+                       pull(value))) %>%
+      #  filter(n > 75) %>%
+        ggplot(., aes(x=reorder_within(value, median, outcome),
+                     # size = usersrated,
+                      by = game_id,
+                      y = var))+
+        geom_point(alpha=0.05,
+                   size = 0.5,
+                   position = position_jitternormal(sd_x = 0.1))+
+        coord_flip()+
+        geom_boxplot(alpha = 0.4,
+                     outlier.shape = NULL,
+                     outlier.alpha =0,
+                     outlier.size=0)+
+        facet_wrap(outcome ~.,
+                   scales = "free")+
+        theme_bw(8)+
+        my_caption+
+        ggtitle("Outcomes by BGG Designers",
+                subtitle = "Displaying the top 50 most frequent designers on BGG")+
+        xlab("")+
+        scale_x_reordered()
+
+
+# which designer features are we keeping?
+selected_designers = summarized_designers %>%
+        mutate(tidied = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(tidied = paste("designer", tidied, sep="_")) %>%
+        select(type, id, value, tidied)
+
+```
+
+This amounts to allowing for designers once they have released about 15 games. We'll more or less take the same approach for artists.
+
+```{r also look at artists, warning=F, message=F, fig.height=14, fig.width=11}
+
+artist_prop = .001
+        
+# artists
+artists = train_types %>%
+        filter(type == 'artist') %>%
+        left_join(., train_games,
+                  by = c("game_id"))
+
+# summarize
+summarized_artists = artists %>%
+        group_by(type, id, value) %>%
+        summarize(median_bayesaverage = median(bayesaverage),
+                  median_average = median(average),
+                  median_averageweight = median(averageweight),
+                  median_usersrated = median(log(usersrated)),
+                  n_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        bind_cols(., train_games %>%
+                          summarize(total_games = n_distinct(game_id))) %>%
+        arrange(desc(n_games)) %>%
+        mutate(prop = n_games / total_games) %>%
+        filter(prop > artist_prop)
+#%>%
+
+# bar chart
+artists %>%
+        group_by(value) %>%
+        mutate(n = n()) %>%
+        ungroup() %>%
+        mutate(usersrated = log(usersrated)) %>%
+        select(type, id, value, n, game_id, name, yearpublished, average, bayesaverage, usersrated, averageweight) %>%
+        gather("outcome", "var",
+               -type, -id, -game_id, -name, -yearpublished, -value, -n) %>%
+        group_by(outcome, value) %>%
+        mutate(median = median(var)) %>%
+        ungroup() %>%
+        filter(value %in% (summarized_artists %>% 
+                       slice_max(n_games, n = 50, with_ties = F) %>%
+                       pull(value))) %>%
+      #  filter(n > 75) %>%
+        ggplot(., aes(x=reorder_within(value, median, outcome),
+                     # size = usersrated,
+                      by = game_id,
+                      y = var))+
+        geom_point(alpha=0.05,
+                   size = 0.5,
+                   position = position_jitternormal(sd_x = 0.1))+
+        coord_flip()+
+        geom_boxplot(alpha = 0.4,
+                     outlier.shape = NULL,
+                     outlier.alpha =0,
+                     outlier.size=0)+
+        facet_wrap(outcome ~.,
+                   scales = "free")+
+        theme_bw(8)+
+        my_caption+
+        ggtitle("Outcomes by BGG Artists",
+                subtitle = "Displaying the top 50 most frequent artists on BGG")+
+        xlab("")+
+        scale_x_reordered()
+
+
+# which artist features are we keeping?
+selected_artists = summarized_artists %>%
+        mutate(tidied = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(tidied = paste("artist", tidied, sep="_")) %>%
+        select(type, id, value, tidied)
+
+```
+
+### Publishers
+
+Publishers are a bit more tricky. If we look at the top rated publishers, we'll notice something a bit odd. Some of the publishers we'll recognize, but we also see some names that might not make a a lot of sense. Why are Asmodee Italia and Galapagos towards the top? The reason for this is foreign language publishers - once a game becomes popular enough, these games end up being published in foreign languages. This means certain publishers are a reflection of the outcome we are trying to predict (the average and bayes average), and shouldn't be used as predictors in models of these outcomes.
+
+```{r look at publishers, fig.height=14, fig.width=11}
+
+# publishers
+publishers = train_types %>%
+        filter(type == 'publisher') %>%
+        left_join(., train_games,
+                  by = c("game_id"))
+
+# summarize
+summarized_publishers = publishers %>%
+        group_by(type, value, id) %>%
+        summarize(median_bayesaverage = median(bayesaverage),
+                  median_average = median(average),
+                  median_averageweight = median(averageweight),
+                  median_usersrated = median(log(usersrated)),
+                  n_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        bind_cols(., train_games %>%
+                          summarize(total_games = n_distinct(game_id))) %>%
+        arrange(desc(n_games)) %>%
+        mutate(prop = n_games / total_games)
+# # make datatablew
+# summarized_publishers %>% 
+#         mutate_if(is.numeric, round, 2) %>%
+#         datatable()
+
+# # bar chart
+# summarized_publishers %>%
+#         ggplot(., aes(x=reorder(value, n_games),
+#                       y=n_games))+
+#         geom_col()+
+#         theme_phil()+
+#         coord_flip()+
+#         xlab("")+
+#         ylab("number of games")
+
+# jitter chart
+# bar chart
+publishers %>%
+        group_by(value) %>%
+        mutate(n = n()) %>%
+        ungroup() %>%
+        mutate(usersrated = log(usersrated)) %>%
+        select(type, id, value, n, game_id, name, yearpublished, average, bayesaverage, usersrated, averageweight) %>%
+        gather("outcome", "var",
+               -type, -id, -game_id, -name, -yearpublished, -value, -n) %>%
+        group_by(outcome, value) %>%
+        mutate(median = median(var)) %>%
+        ungroup() %>%
+        filter(value %in% (summarized_publishers %>% 
+                       slice_max(n_games, n = 50, with_ties = F) %>%
+                       pull(value))) %>%
+      #  filter(n > 75) %>%
+        ggplot(., aes(x=reorder_within(value, median, outcome),
+                     # size = usersrated,
+                      by = game_id,
+                      y = var))+
+        geom_point(alpha=0.05,
+                   size = 0.5,
+                   position = position_jitternormal(sd_x = 0.1))+
+        coord_flip()+
+        geom_boxplot(alpha = 0.4,
+                     outlier.shape = NULL,
+                     outlier.alpha =0,
+                     outlier.size=0)+
+        facet_wrap(outcome ~.,
+                   scales = "free")+
+        theme_bw(8)+
+        my_caption+
+        ggtitle("Outcomes by BGG Publishers",
+                subtitle = "Displaying the top 50 most frequent publishers on BGG")+
+        xlab("")+
+        scale_x_reordered()
+
+
+```
+
+### Publisher "White-List"
+
+So what should we do? I've settled on creating a 'white-list' for publishers, meaning publishers that have been the original publisher of popular games. 
+
+```{r publisher features}
+
+publisher_list = c(51,
+                   102,
+                   196,
+                   396,
+                   1027,
+                   21847,
+                   10,
+                   1001,
+            #       512,
+                   4,
+                   140,
+                   157,
+                   34,
+                   28,
+                   10001,
+                   39,
+                   37,
+                   20,
+                   3,
+                   538,
+                   52,
+                   8923,
+                   17,
+                   5,
+                   3320,
+                   597,
+               #     5400, matagot, dropping for now due to leakage issues with publishing in france
+                   26,
+                   47,
+                   11652,
+                   19,
+                   13,
+                   12024,
+                   10754,
+                   21608,
+                   108,
+                   221,
+                   171,
+                   93,
+                   25842,
+                   140,
+            23202,
+                   28072)
+
+# list of selected publishers
+selected_publishers = summarized_publishers %>%
+        filter(id %in% publisher_list) %>%
+        mutate(tidied = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(tidied = paste("publisher", tidied, sep="_")) %>%
+        select(type, id, value, tidied)
+
+# make a table
+summarized_publishers %>%
+        filter(value %in% selected_publishers$value) %>%
+        ungroup() %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(-type, -id,-total_games, -prop) %>%
+        flextable() %>%
+        autofit()
+      #  DT::datatable()
+        # flextable() %>%
+        # autofit()
+        
+```
+
+## Assemble Data
+
+Putting this all together, we will keep the selected categorical features, creating dummy variables for each, which we will then parse down through a combination of near zero variance and correlation filters before modeling, then ultimately conducting feature selection within the modeling process.
+
+```{r selected features, echo=T}
+
+# combine into one table
+categorical_features_selected= rbindlist(mget(ls(pattern = "selected_"))) %>%
+        as_tibble() %>%
+        mutate(selected = "yes")
+
+# select in full game types set
+game_types_selected = game_types %>%
+        left_join(., categorical_features_selected %>%
+                          select(type, id, value, tidied, selected),
+                  by = c("type", "id", "value")) %>%
+        filter(selected == 'yes')
+
+# pivot and spread these out
+game_types_pivoted =game_types_selected %>%
+        select(game_id, type, value) %>%
+        mutate(type_abbrev = substr(type, 1, 3)) %>%
+        mutate(value = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(type = paste(type, value, sep="_")) %>%
+        mutate(has_type = 1) %>%
+        select(-value) %>%
+        pivot_wider(names_from = c("type"),
+                            values_from = c("has_type"),
+                            id_cols = c("game_id"),
+                            names_sep = "_",
+                            values_fn = min,
+                            values_fill = 0)
+
+# now join
+games_model = active_games %>%
+        left_join(.,
+                  game_types_pivoted,
+                  by = "game_id") 
+
+# remove objects we don't need
+rm(train_types,
+   game_types_selected,
+   game_types_pivoted,
+   publishers,
+   categorical_features_selected,
+   families,
+   mechanics,
+   categories,
+   designers,
+   artists)
+
+rm(list = ls(pattern = "selected_"))
+rm(list = ls(pattern = "summarized"))
+   
+```
+
+# Modeling Set Up
+
+We can now proceed to building predictive models. We'll split the data into training, validation, and test sets, then do a bit of exploratory analysis on the training set. We'll then create recipes which we use in training and evaluating our models.
+
+## Splitting the Data
+
+First, we'll split the data. We'll set up our training, validation, and test sets based on the year games are published. Our training set will be games published prior to `r params$end_training_year + 1` while our main validation set will be games published in `r params$end_training_year +1`. We'll use resampling within our training set to tune our models, validating their performance on the validation set. The test set will be all games published after our validation set.
+
+```{r prepare datasets for modeling, echo=T}
+
+# get full dataset
+games_full = games_model %>%
+        mutate(dataset = case_when(yearpublished <= params$end_training_year ~ 'train',
+                                   yearpublished == params$end_training_year+1 ~ 'validation',
+                                   TRUE ~ 'test')) %>%
+        mutate(usersrated = log(usersrated))
+
+# filter our training set to only games with at least n ratings
+games_train = games_full %>%
+        filter(dataset == 'train') %>%
+        filter(usersrated >= log(params$min_ratings))
+
+games_validation = games_full %>%
+        filter(dataset == 'validation')
+
+games_test =  games_full %>%
+        filter(dataset == 'test')
+
+```
+
+We're going to use the tidymodels framework for our model training and evaluation, so we'll create custom splits around these for our workflows. 
+
+```{r create custom splits, echo=T}
+
+# make an initial split based on previously defined splits
+validation_split = make_splits(list(analysis = seq(nrow(games_train)),
+                                 assessment = nrow(games_train) + seq(nrow(games_validation))),
+                            data  = bind_rows(games_train,
+                                      games_validation))
+
+```
+
+
+## Some Quick Exploratory Analysis
+
+We can do a bit of exploratory analysis on this to help guide decisions we'll make in our recipe, which we'll build on the training set. We'll look at some of the main numeric features of games, such as player counts, playingtime, and yearpublished, for each of our outcomes.
+
+### Scatter Plots
+
+```{r correlation between predictors and usersrated, fig.height=8, fig.width=10, warning=F, message=F}
+
+# get any numeric features that have no variation
+zero_sd = games_train %>%
+        select_if(is.numeric) %>%
+        mutate_if(is.numeric, replace_na, 0) %>%
+        gather() %>%
+        group_by(key) %>%
+        summarize(sd = sd(value)) %>%
+        filter(sd ==0) %>%
+        pull(key)
+
+# create temp df for visualization
+df = games_train %>%
+        select(game_id,
+               name,
+               yearpublished,
+               average, 
+               bayesaverage,
+               usersrated,
+               averageweight,
+               minage,
+               minplayers,
+               maxplayers,
+               playingtime) %>%
+        mutate(averageweight = case_when(averageweight ==0 ~ 1,
+                                         TRUE ~ averageweight)) %>%
+        mutate(minplayers = log1p(minplayers),
+               maxplayers = log1p(maxplayers),
+               playingtime = log1p(playingtime),
+               minage = log1p(minage)) %>%
+        gather("variable", "x",
+               -game_id, -name, -usersrated,
+               -averageweight, -bayesaverage, -average) %>%
+        gather("outcome", "y",
+               -game_id, -name, -variable, -x)
+
+# plot
+df %>%
+        filter(!(variable == 'yearpublished' & x < 1950)) %>%
+        ggplot(., aes(x=x,
+                      label = name,
+                      y = y))+
+        geom_jitter(alpha = 0.25)+
+        facet_grid(outcome ~ variable,
+                   scales="free")+
+        theme_bw(8)+
+        my_caption+
+        stat_cor(p.accuracy = 0.01)+
+        geom_smooth(se=F,
+                    method = 'loess',
+                    formula = 'y ~ x')+
+        my_caption
+
+rm(df)
+ 
+```
+
+### Correlation Plots
+
+We can look at the correlation between our outcomes, the main features we have for games (playtime, player count, complexity) and some of the categorical features.
+
+```{r correlation between predictors and categories, fig.height=12, fig.width=12, fig.ca = "Correlation plot of game info and game categories"}
+
+df = games_train %>%
+        select_if(is.numeric) %>%
+        select(-game_id,
+             #  -average,
+               -numcomments,
+               -owned,
+               -trading,
+               -wanting,
+               -wishing,
+            #   -usersrated,
+             #  -bayesaverage,
+               -stddev) %>%
+        mutate_if(is.numeric, replace_na, 0)
+
+# keep numeric and category
+corr_df = df %>%
+        select(-one_of(zero_sd)) %>%
+        select(-starts_with("mechanic"),
+            #   -starts_with("family"),
+            #   -starts_with("category"),
+               -starts_with("artist"),
+               -starts_with("designer"),
+               -starts_with("publisher")) 
+
+# set names
+names(corr_df) = tidy_name_func(names(corr_df))
+
+# get correlation
+corr_categories = cor(corr_df,
+                       use = 'pairwise')
+
+# correlation plot
+ggcorrplot(corr_categories, hc.order = TRUE, outline.color = "white")+
+        theme(axis.text.x = element_text(size = 6))+
+        theme(axis.text.y = element_text(size = 6))
+
+```
+
+What about mechanics? Let's look at the correlation between mechanics and these numeric features.
+
+```{r correlation between predictors and mechanics, fig.height=10, fig.width=10, fig.cap = "Correlation plot of game info and game mechanics"}
+
+
+corr_df = df %>%
+        select(-one_of(zero_sd)) %>%
+        select(
+                #-starts_with("mechanic"),
+               -starts_with("family"),
+               -starts_with("category"),
+               -starts_with("artist"),
+               -starts_with("designer"),
+               -starts_with("publisher"))
+# set names
+names(corr_df) = tidy_name_func(names(corr_df))
+
+# get correlation
+corr_mechanics = cor(corr_df,
+                       use = 'pairwise')
+
+# correlation plot
+ggcorrplot(corr_mechanics, hc.order = TRUE, outline.color = "white")+
+        theme(axis.text.x = element_text(size = 7))+
+        theme(axis.text.y = element_text(size = 7))
+
+```
+
+## Make Recipes
+
+We'll make a basic recipe, which we'll then update for each specific outcome.
+
+```{r create base recipe, echo=T}
+
+# creating recipe with no formula or outcome specified yet
+base_recipe = recipe(x = games_train) %>%
+        update_role(all_numeric(),
+                    new_role = "predictor") %>%
+        step_mutate_at(c("averageweight"),
+                         fn = ~ na_if(., 0),
+                       skip = T) %>% # set to skip as this will be an outcome
+        step_mutate_at(c("yearpublished",
+                         "playingtime"),
+                       fn = ~ na_if(., 0)) %>% # these variables come through as 0 if they are missing
+        update_role(one_of("timestamp",
+                      "dataset",
+                      "game_id",
+                      "name",
+                      "numcomments",
+                      "numweights",
+                      "owned",
+                      "trading",
+                      "wanting",
+                      "wishing",
+                      "timestamp",
+                      "average",
+                      "bayesaverage",
+                      "averageweight",
+                      "usersrated",
+                      "stddev"),
+                      new_role = "id") %>%
+        step_filter(!is.na(yearpublished)) %>%
+        step_filter(!is.na(name)) %>%
+        step_mutate(missing_minage = case_when(is.na(minage) ~ 1,
+                                               TRUE ~ 0)) %>%
+        step_mutate(missing_playtingtime = case_when(is.na(playingtime) ~ 1,
+                                                     TRUE ~ 0)) %>%
+        step_impute_median(playingtime,
+                           maxplayers,
+                           minage) %>% # medianimpute numeric predictors
+        # step_mutate(published_prior_1950 = case_when(yearpublished<1950 ~ 1,
+        #                                                TRUE ~ 0)) %>%
+        step_mutate(minplayers = case_when(minplayers < 1 ~ 1,
+                                                     minplayers > 10 ~ 10, # truncate
+                                                     TRUE ~ minplayers),
+                    maxplayers = case_when(maxplayers < 1 ~ minplayers,
+                                                     maxplayers > 20 ~ 20,
+                                                     TRUE ~ maxplayers)) %>%
+        step_rm(minplaytime, maxplaytime) %>%
+        step_mutate(time_per_player = playingtime/ maxplayers) %>% # make time per player variable
+        step_mutate_at(starts_with("category_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("mechanic_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("artist_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("designer_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("publisher_"),
+                           fn = ~ replace_na(., 0)) %>%  
+        step_mutate_at(starts_with("family_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate(number_mechanics = rowSums(across(starts_with("mechanic_"))),
+                  #    number_artists = rowSums(across(starts_with("art_"))),
+                      number_categories = rowSums(across(starts_with("category_")))) %>%
+        step_zv(all_predictors()) %>%
+        step_nzv(all_predictors(),
+                   -starts_with("publisher_"),
+                   -starts_with("artist_"),
+                   -starts_with("designer_"),
+                   freq_cut = 100/1) %>% 
+        step_corr(all_predictors(),
+                  threshold = 0.9) %>%
+        step_mutate(published_prior_1950 = case_when(yearpublished < 1950 ~ 1,
+                                                     TRUE ~ 0)) %>%
+        step_mutate(trunc_yearpublished = case_when(yearpublished < 1950 ~ 1950,
+                                              TRUE ~ yearpublished)) %>% # truncate
+        # step_mutate(cut_yearpublished= yearpublished) %>%
+        # step_cut(cut_yearpublished,
+        #                      breaks = seq(1970, 2010, 10),
+        #                      include_outside_range = T) %>%
+        step_mutate(cut_playingtime= playingtime) %>%
+        step_cut(cut_playingtime,
+                             breaks = c(15, 45, 90, 180),
+                             include_outside_range = T) %>%
+        step_dummy(all_nominal_predictors()) %>%
+        step_log(playingtime,
+                   time_per_player,
+                   offset = 1) %>%
+        step_dummy(all_nominal_predictors()) %>%
+        step_zv(all_predictors()) %>% # remove features with no variance
+        step_nzv(all_predictors(),
+                   -starts_with("publisher_"),
+                   -starts_with("artist_"),
+                   -starts_with("designer_"),
+                   freq_cut = 100/1) %>% # apply near zero variance filter
+        step_nzv(starts_with("artist_"),
+                 -one_of(c("artist_ian_otoole",
+                           "artist_chris_quilliams")), # allow for some specific artists, well known in recent years
+                 freq_cut = 250/1) %>%
+        step_corr(all_predictors(),
+                  threshold = 0.9) # remove highly, highly correlated features
+
+# save the base recipe
+readr::write_rds(base_recipe,
+                 here::here("models",
+                            paste("base_recipe",
+                                  "_", Sys.Date(), ".Rdata", sep="")))
+
+```
+
+For modeling the BGG average, bayesaverage, and usersrated, we'll include averageweight as a feature and address missingness within the recipe with a simple model.
+
+```{r create outcome specific recipes, echo=T}
+
+# average
+recipe_average = base_recipe %>%
+        update_role(average,
+                    new_role = "outcome") %>%
+        update_role(averageweight,
+                    new_role = "predictor") %>%
+        step_impute_linear(averageweight,
+                     #      impute_with = imp_vars(all_predictors())) %>%
+                        impute_with = imp_vars(
+                                playingtime,
+                                time_per_player,
+                                number_mechanics))
+# bayesaverage
+recipe_bayesaverage = base_recipe %>%
+        update_role(bayesaverage,
+                    new_role = "outcome") %>%
+        update_role(averageweight,
+                    new_role = "predictor") %>%
+        step_impute_linear(averageweight,
+                     #      impute_with = imp_vars(all_predictors())) %>%
+                        impute_with = imp_vars(
+                                playingtime,
+                                time_per_player,
+                                number_mechanics)) # model complexity via a simple linear model of playingtime and mechanics
+
+# usersrated
+recipe_usersrated = base_recipe %>%
+        update_role(usersrated,
+                    new_role = "outcome") %>%
+        update_role(averageweight,
+                    new_role = "predictor") %>%
+        step_impute_linear(averageweight,
+                     #      impute_with = imp_vars(all_predictors())) %>%
+                        impute_with = imp_vars(
+                                playingtime,
+                                time_per_player,
+                                number_mechanics))
+
+```
+
+For modeling complexity (averageweight), we'll trim the dataset further, omitting games for which we haven't received enough votes on their complexity.
+
+```{r create recipe for complexity, echo=T}
+
+recipe_averageweight = base_recipe %>%
+        update_role(averageweight,
+                    new_role = "outcome") %>%
+        step_filter(numweights > 10)
+
+```
+
+## Define Models and Workflows
+
+We'll use a few different methods in modeling our outcome. I'll mostly rely on penalized regression (glmnet) and xgboost (xgbTree), but I'll also explore using bayesian linear models with Stan.
+
+```{r models for workflows, echo=T}
+
+# penalized linear regression
+glmnet_reg_mod<- 
+  linear_reg(penalty = tune::tune(),
+             mixture = 0.5) %>%
+  set_engine("glmnet")
+
+# specify grid for tuning
+glmnet_grid <- tibble(penalty = 10^seq(-4, -0.5, 
+                                       length.out = 30))
+
+# xgbtree for regression
+xgbTree_reg_mod <-
+  parsnip::boost_tree(
+    mode = "regression",
+    trees = 250,
+    sample_size = tune::tune(),
+    min_n = tune::tune(),
+    tree_depth = tune::tune()) %>%
+  set_engine("xgboost",
+             objective = "reg:squarederror")
+
+# xgbTree grid
+xgbTree_grid <- 
+  expand.grid(
+          sample_size = c(0.5, 0.75, 0.95),
+          min_n = c(5, 15, 25),
+          tree_depth = 3
+  )
+
+# stan linear regression
+set.seed(123)
+prior_dist <- rstanarm::student_t(df = 1) # student t prior
+ 
+# lm with stan
+stan_reg_mod <-   
+  linear_reg() %>% 
+  set_engine("stan", 
+             prior_intercept = prior_dist, 
+             prior = prior_dist,   
+             iter = 8000)
+
+
+```
+
+We then create workflows for each model, for each outcome.
+
+```{r create workflows}
+
+### workflows for outcome 1
+### average
+# stan reg
+average_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_average %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+average_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_average %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+average_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_average)
+
+### workflows for outcome 2
+### bayesaverage
+# stan reg
+bayesaverage_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+bayesaverage_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+bayesaverage_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_bayesaverage)
+
+### workflows for outcome 3
+### bayesaverage
+# stan reg
+bayesaverage_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+bayesaverage_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+bayesaverage_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_bayesaverage)
+
+### workflows for outcome 3
+### usersrated
+# stan reg
+usersrated_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_usersrated %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+usersrated_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_usersrated %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+usersrated_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_usersrated)
+
+### workflows for outcome 4
+### averageweight
+# stan reg
+averageweight_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_averageweight %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+averageweight_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_averageweight %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+averageweight_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_averageweight)
+
+```
+
+```{r workflow settings}
+
+# specify regression metrics
+reg_metrics<-metric_set(yardstick::rmse,
+                        yardstick::rsq,
+                        yardstick::mae,
+                        yardstick::mape)
+
+# control for resamples
+keep_pred <- control_resamples(save_pred = TRUE, 
+                               save_workflow = TRUE)
+
+```
+
+For the models that rely on tuning parameters (glmnet and xgbTree) we'll define a cross validation split within the training set and tune across resamples.
+
+```{r set up folds}
+
+# create folds for training
+set.seed(1999)
+train_folds= vfold_cv(games_train,
+                      strata = average,
+                      v=5)
+
+```
+
+# Training Models
+
+We'll then train models for each outcome.
+
+```{r tune models with tuning parameters, eval=F, echo=T} 
+
+### outcome 1
+## average
+# glmnet
+set.seed(1999)
+average_glmnet_tune = average_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+average_xgbTree_tune = average_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+### outcome 2
+## bayesaverage
+# glmnet
+set.seed(1999)
+bayesaverage_glmnet_tune = bayesaverage_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+bayesaverage_xgbTree_tune = bayesaverage_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+
+### outcome 3
+## usersrated
+# glmnet
+set.seed(1999)
+usersrated_glmnet_tune = usersrated_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+usersrated_xgbTree_tune = usersrated_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+### outcome 3
+## averageweight
+# glmnet
+set.seed(1999)
+averageweight_glmnet_tune = averageweight_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+averageweight_xgbTree_tune = averageweight_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+
+# gather tuning results
+tune_results = c(
+        mget(ls(pattern = "glmnet_tune")),
+        mget(ls(pattern = "xgbTree_tune"))
+        )
+
+# remove tuning results themselves
+rm(list=ls(pattern="xgbTree_tune"))
+rm(list =ls(pattern="glmnet_tune"))
+
+```
+
+
+```{r save or load previously run tuning}
+
+# # save tuning results
+# readr::write_rds(tune_results,
+#                  file = here::here("models", "tune_results.Rds"))
+
+# load previously run tuning results
+tune_results = readr::read_rds(here::here("models", "tune_results.Rds"))
+
+```
+
+
+
+For the linear models with Stan, we don't need to tune any parameters, we'll just fit them on our training set.
+
+```{r fit with stan, echo=T, warning=F, message=F, eval=F}
+
+# register parallel
+all_cores <- parallel::detectCores(logical = FALSE-2)
+cl <- parallel::makePSOCKcluster(all_cores)
+doParallel::registerDoParallel(cl)
+
+### fit stan models by outcome
+# average
+average_stan_lm_fit = average_stan_lm_workflow %>%
+        fit(games_train)
+
+# bayesbayesaverage
+bayesaverage_stan_lm_fit = bayesaverage_stan_lm_workflow %>%
+        fit(games_train)
+
+# usersrated
+usersrated_stan_lm_fit = usersrated_stan_lm_workflow %>%
+        fit(games_train)
+
+# averageweight
+averageweight_stan_lm_fit = averageweight_stan_lm_workflow %>%
+        fit(games_train)
+
+# remove parallel backend
+registerDoSEQ()
+
+```
+
+```{r get and save stan objects, eval=F}
+
+# get stan_models into one object
+stan_lm_train_results = mget(ls(pattern = "stan_lm_fit"))
+
+# remove individual
+rm(list=ls(pattern="stan_lm_fit"))
+
+```
+
+
+```{r stan models, warning=F, message=F}
+
+# # save tuning results
+# readr::write_rds(stan_lm_train_results,
+#                  file = here::here("models", "stan_lm_train_results.Rds"))
+
+# load previously run tuning results
+stan_lm_train_results = readr::read_rds(here::here("models", "stan_lm_train_results.Rds"))
+
+average_stan_lm_fit = stan_lm_train_results$average_stan_lm_fit
+bayesaverage_stan_lm_fit = stan_lm_train_results$bayesaverage_stan_lm_fit
+usersrated_stan_lm_fit = stan_lm_train_results$usersrated_stan_lm_fit
+averageweight_stan_lm_fit = stan_lm_train_results$averageweight_stan_lm_fit
+
+rm(stan_lm_train_results)
+
+```
+
+For models with tuning parameters, we'll refit on the training set using the tuning parameters which performed well in resampling.
+
+```{r finalize workflows, warning=F, message=F, echo=T}
+
+
+### get tuning parameters
+# glmnet
+glmnet_best_pars =
+        lapply(tune_results[grep("glmnet", names(tune_results))],
+               show_best,
+               "rmse",
+               1)
+# xgbTree
+xgbTree_best_pars =
+        lapply(tune_results[grep("xgbTree", names(tune_results))],
+               show_best,
+               "rmse",
+               1)
+
+## finalize workflows
+
+### outcome 1
+## average
+# glmnet
+set.seed(1999)
+average_glmnet_last_fit= average_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$average_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+average_xgbTree_last_fit= average_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$average_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+### outcome 2
+## bayesaverage
+# glmnet
+set.seed(1999)
+bayesaverage_glmnet_last_fit= bayesaverage_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$bayesaverage_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+bayesaverage_xgbTree_last_fit= bayesaverage_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$bayesaverage_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+### outcome 3
+## usersrated
+# glmnet
+set.seed(1999)
+usersrated_glmnet_last_fit= usersrated_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$usersrated_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+usersrated_xgbTree_last_fit= usersrated_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$usersrated_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+### outcome 4
+## averageweight
+# glmnet
+set.seed(1999)
+averageweight_glmnet_last_fit= averageweight_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$averageweight_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+averageweight_xgbTree_last_fit= averageweight_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$averageweight_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
+
+```
+
+
+## Training Results
+
+Before we go to the validation set, we can take a look at the models from training, where we tuned the penalized linear models and gradient boosted trees and fit linear models with stan. 
+
+### glmnet
+
+For the penalized linear models (elastic net regularization), our lone tuning parameter is the *penalty*, or the amount of regularization used by the model. Looking at the results from resampling (examining RMSE for each fold), we achieved the best results with only a slight amount of regularization.
+
+```{r get tuning results for glmnet, echo=T}
+
+# collect metrics by fold from glmnet
+lapply(tune_results[grep("glmnet", names(tune_results))], collect_metrics, summarize=F) %>% # get tuning results 
+        rbindlist(., idcol =T) %>% # combine into dataframe
+        filter(.metric == 'rmse') %>% 
+        separate(".id", c("outcome", "method", "type")) %>%
+        ggplot(., aes(x = penalty,
+                      by = id,
+                      color = id,
+                      y = .estimate))+
+        geom_line(lwd = 1.02)+
+        facet_wrap(outcome~.,
+                   ncol = 2,
+                   scales = "free_y")+
+        scale_color_viridis_d()+
+        theme_bw(8)+
+        ylab("rmse")
+        
+```
+
+We used cross validation to estimate the appropriate values for this tuning parameter, but we can also look at the predictions from resampling to get a sense of how the model performed in predicting each outcome.
+
+We'll principally use the validation set to estimate performance on data not yet not seen by the model, as using cross validation for both tuning and model assessment at the same time tends to lead to overly optimistic estimates of model performance. Still, we can open up the predictions and and take a look.
+
+```{r look at predictions from resampling for glmnet, fig.height=8, fig.width=10, echo=T}
+
+# collect predictions with best tuning parameters
+lapply(tune_results[grep("glmnet", names(tune_results))],collect_predictions) %>%
+        rbindlist(., idcol=T, fill=T) %>%
+        left_join(., glmnet_best_pars %>%
+                          rbindlist(., idcol=T) %>%
+                          mutate(best_tune = penalty) %>%
+                          select(.id, best_tune),
+                  by = ".id") %>%
+        filter(penalty == best_tune) %>%
+        select(id, .pred, .row, 
+               average,
+               averageweight,
+               usersrated,
+               bayesaverage) %>%
+        gather("variable", "value",
+               -id, -.pred, -.row) %>%
+        left_join(., games_train %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name),
+                  by = c(".row")) %>%
+        filter(!is.na(value)) %>%
+        ggplot(., aes(x=.pred,
+                      label = name,
+                      y = value))+
+        geom_point(alpha = 0.6)+
+        geom_text(size=2,
+                  check_overlap=T,
+                  vjust = -1)+
+        facet_wrap(variable ~.,
+                   ncol =2,
+                   scales="free")+
+        theme_bw(8)+
+        geom_abline(slope = 1,
+                    intercept =0,
+                    linetype = 'dashed')+
+        geom_smooth(method = 'loess',
+                    formula = 'y ~ x',
+                    col = 'blue')+
+        stat_cor(p.accuracy = .01,
+                 col = 'blue')
+
+```
+
+We can also look at the features which had the largest partial effects by examining the absolute value of the coefficients (as we standardized our predictors during preprocessing). We'll filter to the 40 features with the largest partial effects in each model.
+
+```{r get glmnet fits, fig.height=8, fig.width=8}
+
+# get glmnet fits
+glmnet_fits = mget(ls(pattern = "glmnet_last_fit"))
+
+# extract and tidy coefs
+glmnet_coefs = lapply(glmnet_fits,
+                      function(x)
+                      pluck(x, ".workflow", 1) %>%
+                              extract_fit_parsnip() %>%
+                              tidy()) %>%
+        rbindlist(., idcol=T) %>%
+        filter(term!='(Intercept)')
+
+# get top 40 features with largest absolute effect
+glmnet_coefs %>%
+        group_by(.id) %>%
+        slice_max(., order_by = abs(estimate),
+                  n=40,
+                  with_ties = F) %>%
+        separate(".id", c("outcome", "method", "fit", "type"), sep = "_") %>%
+        select(outcome, method, term, estimate) %>%
+        mutate(term = gsub("trunc_", "", term)) %>%
+        mutate(term = tidy_name_func(term)) %>%
+        ggplot(., aes(x=estimate,
+                      y=reorder_within(term,
+                                       estimate,
+                                       outcome)))+
+        geom_point()+
+        facet_wrap(outcome ~.,
+                   ncol =2,
+                   scales="free")+
+        scale_y_reordered()+
+        theme_bw(8)+
+        geom_vline(xintercept = 0,
+                   linetype = 'dashed')+
+        xlab("estimated effect on outcome")+
+        ylab("feature")
+
+rm(glmnet_fits,
+   glmnet_coefs)
+
+```
+
+### xgbTree
+
+For the gradient boosted trees, we can look at the results in resampling across a few of its tuning parameters.
+
+```{r get tuning results for xgbTree, echo=T}
+
+# collect metrics by fold from xgbTree
+lapply(tune_results[grep("xgbTree", names(tune_results))], 
+       collect_metrics, summarize=F) %>% # get tuning results 
+        rbindlist(., idcol =T) %>% # combine into dataframe
+        filter(.metric == 'rmse') %>% 
+        separate(".id", c("outcome", "method", "type")) %>%
+        ggplot(., aes(x=sample_size,
+                      group = id,
+                      color =id,
+                      shape = factor(min_n),
+                      y = .estimate))+
+        geom_line(lwd = 1.02)+
+        facet_grid(outcome ~ min_n,
+                   scales = "free_y")+
+        theme_bw(8)+
+        scale_color_viridis_d()
+
+```
+
+```{r look at predictions from resampling for xgbTree, fig.height=8, fig.width=10, echo=T}
+
+# collect predictions
+lapply(tune_results[grep("xgbTree", names(tune_results))],
+       collect_predictions) %>%
+        rbindlist(., idcol=T, fill=T) %>%
+        left_join(., xgbTree_best_pars %>%
+                          rbindlist(., idcol=T) %>%
+                          mutate(best_tune = 1),
+                  by = c(".id",
+                         "min_n",
+                         "tree_depth",
+                         "sample_size",
+                         ".config")) %>%
+        filter(best_tune==1) %>%
+        select(id, .pred, .row, 
+               average,
+               averageweight,
+               usersrated,
+               bayesaverage) %>%
+        gather("variable", "value",
+               -id, -.pred, -.row) %>%
+        left_join(.,
+                  games_train %>%
+                          mutate(.row = row_number()) %>%
+                          select(game_id, name, .row),
+                  by = c(".row")) %>%
+        filter(!is.na(value)) %>%
+        ggplot(., aes(x=.pred,
+                      label = name,
+                      y = value))+
+        geom_point(alpha = 0.6)+
+        geom_text(size=2,
+                  check_overlap=T,
+                  vjust = -1)+
+        facet_wrap(variable ~.,
+                   ncol =2,
+                   scales="free")+
+        theme_bw(8)+
+        geom_abline(slope = 1,
+                    intercept =0,
+                    linetype = 'dashed')+
+        geom_smooth(method = 'loess',
+                    formula = 'y ~ x',
+                    col = 'blue')+
+        stat_cor(p.accuracy = .01,
+                 col = 'blue')
+
+```
+
+While we don't have coefficients from this model, we can extract measures such as variable importance (via methods such as variable permutation or Shapley scores).
+
+```{r extract variable importance from xgbTree, echo=T, fig.height=8, fig.width=8}
+
+# get fits
+xgbTree_fits = mget(ls(pattern = "xgbTree_last_fit"))
+
+# extract miodel specific variable importance, using gain (fractional contribution of each feature 
+# based on the total gain of the corresponding feature's splits
+lapply(xgbTree_fits,
+                      function(x)
+                      pluck(x, ".workflow", 1) %>%
+                              extract_fit_parsnip() %>%
+                              vip::vi_model(type="gain")) %>%
+        rbindlist(., idcol = T) %>%
+        separate(".id", c("outcome", "method", "fit", "type"), sep = "_") %>%
+        group_by(outcome) %>%
+        slice_max(order_by = Importance,
+                  n = 40,
+                  with_ties = F) %>%
+        rename(term = Variable) %>%
+        mutate(term = gsub("trunc_", "", term)) %>%
+        mutate(term = tidy_name_func(term)) %>%
+        ggplot(., aes(x=Importance,
+                      y=reorder_within(term,
+                                       Importance,
+                                       outcome)))+
+        geom_col(width=0.7)+
+        facet_wrap(outcome ~.,
+                   ncol =2,
+                   scales="free_y")+
+        scale_y_reordered()+
+        theme_bw(8)+
+        xlab("importance of feature")+
+        ylab("feature")
+
+```
+
+### Estimating the Geek Rating - Directly or Indirectly?
+
+The geek rating (bayesaverage) is computed via a combination of user ratings and the average. The approximate formula is to start a game off with 1000 votes with a 5.5 average, which then will shift as a game accumulates ratings. I previously trained models to directly predict the bayesaverage, as well as the average and user ratings. I am interested to see, do we do better in estimating the geek rating by predicting its components (user ratings and average) and then computing it, or by directly estimating it with a model?
+
+One way we can get a sense of model fit is to plot simulations from the model and compare it to the actual data. For the linear models fit with stan, it is easy to extract simulated datasets using the posterior. On the left, I display 100 simulated datasets from the stan model that estimated the geek rating directly. On the right, I display simulated datasets from the average and user rating stan models, from which I then computed the bayesaverage for every simulation.
+
+```{r look at simulations for training set, warning=F, message=F}
+
+library(patchwork)
+library(tidybayes)
+
+# simulating from bayesaverage model for the training set
+direct = bayesplot::ppc_dens_overlay(games_train$bayesaverage,
+                    bayesaverage_stan_lm_fit %>%
+                            extract_fit_engine() %>%
+                            posterior_predict(.,
+                                              newdata = bayesaverage_stan_lm_fit %>%
+                                                      extract_recipe() %>% 
+                                                      bake(games_train),
+                                              draws = 100))+
+        theme_bw(8)+
+        scale_color_manual(values = c("black", "deepskyblue1"))+
+        theme(legend.position = "none")+
+        xlab("bayesaverage")+
+        ylab("density")+
+        ggtitle("estimating directly")+
+        coord_cartesian(xlim = c(3.5,
+                                 9.5),
+                        ylim = c(0, 4))
+
+# simualte from usersrated and average models, then compute bayesaverage
+set.seed(2)
+sims = average_stan_lm_fit %>%
+        extract_fit_engine() %>%
+        posterior_predict(draws = 100) %>%
+        tidy_draws() %>%
+        gather(".row", "average",
+               -.chain, -.iteration, -.draw) %>%
+        bind_cols(.,
+                  usersrated_stan_lm_fit %>%
+                          extract_fit_engine() %>%
+                          posterior_predict(draws = 100) %>%
+                          tidy_draws() %>%
+                          gather(".row", "usersrated",
+                                 -.chain, -.iteration, -.draw) %>%
+                          select(usersrated)) %>%
+        mutate(usersrated = plyr::round_any(exp(usersrated), 50)) %>%
+        mutate(bayesaverage = (
+                ((1000*5.5) + (usersrated*average)) /
+                        (1000 + usersrated)))
+
+indirect = sims %>%
+        filter(.iteration %in% (sample(1:max(sims$.iteration), 25))) %>%
+        ggplot(., aes(x=bayesaverage,
+                      group = .iteration))+
+        geom_density(alpha = 0.5,
+                     lwd = 0.75,
+                     color = 'deepskyblue1')+
+        geom_density(data = games_train %>%
+                              mutate(.iteration = 0),
+                      aes(x=bayesaverage),
+                      color = 'black')+
+        theme_bw(8)+
+                ggtitle("estimating indirectly (average + usersrated)")+
+        coord_cartesian(xlim = c(3.5,
+                                 9.5),
+                        ylim = c(0, 4))
+
+
+suppressWarnings({
+suppressMessages({
+        direct + indirect +
+                plot_annotation(title = 'comparing simulated datasets to actual',
+                                subtitle = 'simulated in blue, actual in black')+
+                theme(plot.title = element_text(size = 8))
+})
+})
+
+rm(direct, indirect, sims)
+
+```
+
+In comparing the simulated results for the training set from both approaches, the indirect approach resembles the actual distribution much more closely. Both still have a tendency to overestimate games on the higher end, but the indirect approach generally does a better job in both identifying games that were above average and games that did not move above the baseline geek rating. Will this hold up in the validation set? We shall see. We'll compute our indirect bayesaverage using predictions from each of the methods and see how it fares.
+
+# Validating Models
+
+Having trained the models, we can now move into assessing their performance on the validation set, which are games published in 2020. 
+
+It's important to keep in mind that we are, due to the lack of a true historical dataset, essentially estimating where games will converge to in the specified outcomes. For games recently published, especially during the pandemic, we might not yet have seen games reach stores and backers to accumulate user ratings. 
+
+```{r get previously trained models, echo=T}
+
+# get model worfkows
+trained_workflows = c(
+        lapply(mget(ls(pattern = "_last_fit")),
+                           function(x)
+                                   pluck(x, ".workflow", 1)), # plucking tuned model workflows
+        mget(ls(pattern = "_stan_lm_fit"))) # get stan fits
+
+
+# now predict the validation set with these workflows
+preds_validation = lapply(trained_workflows,
+                          function(x)
+                                  predict(x, new_data = games_validation)) %>%
+        rbindlist(idcol = T) %>%
+        as_tibble()
+
+# calculate bayesaverage
+preds_validation_tidied = preds_validation %>%
+        group_by(.id) %>%
+        mutate(.row = row_number()) %>%
+        left_join(., games_validation %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name),
+                  by = ".row") %>%
+        mutate(.id = gsub("_last", "", gsub("_fit", "", .id))) %>%
+        spread(.id, .pred) %>%
+        mutate(bayesaverage_indirect.glmnet = (
+                ((1000*5.5) + (exp(usersrated_glmnet)*average_glmnet)) /
+                        (1000 + exp(usersrated_glmnet)))
+               ) %>%
+        mutate(bayesaverage_indirect.xgbTree = (
+                ((1000*5.5) + (exp(usersrated_xgbTree)*average_xgbTree)) /
+                        (1000 + exp(usersrated_xgbTree)))
+               ) %>%
+        mutate(bayesaverage_indirect.stan_lm = (
+                ((1000*5.5) + (exp(usersrated_stan_lm)*average_stan_lm)) /
+                        (1000 + exp(usersrated_stan_lm)))
+               ) %>%
+        mutate_if(is.numeric, round, 3) %>%
+        arrange(desc(bayesaverage_indirect.xgbTree))
+
+
+```
+
+
+## Plots
+
+We'll assess the models using a variety of metrics, but I always like to visually compare the predictions of the model to the actual. I'll separate out predictions for the geek rating so we can see the indirect vs direct approach.
+
+```{r scatter plot for our predictions, warning=F, message=F, fig.height=8, fig.width=10}
+
+preds_validation_tidied %>%
+        gather("outcome", ".pred",
+               -.row, -game_id, -name) %>%
+        group_by(outcome) %>%
+        arrange(desc(.pred)) %>%
+        mutate(rank = row_number()) %>%
+        mutate(outcome = gsub("stan_lm", "stan", outcome)) %>%
+        separate(outcome, into = c("outcome", "method"), sep="_") %>%
+        left_join(., games_validation %>%
+                          select(game_id, name,
+                                 average,
+                                 bayesaverage,
+                                 usersrated,
+                                 averageweight,
+                                 numweights) %>%
+                          gather("outcome", "actual",
+                                 -game_id, -name, -numweights),
+                  by = c("game_id", "name", "outcome")) %>%
+        filter(method %in% c('stan', 'glmnet', 'xgbTree')) %>%
+        filter(outcome %in% c("average", "averageweight", "usersrated")) %>%
+        ggplot(., aes(x=.pred,
+                      label = name,
+                      y=actual))+
+        geom_point(alpha = 0.8)+
+        geom_text(size = 2,
+                  vjust = -1,
+                  check_overlap=T)+
+        facet_wrap(outcome ~ method,
+                   ncol = 3,
+                   scales = "free")+
+        theme_bw(8)+
+        geom_abline(slope =1,
+                    intercept = 0,
+                    linetype = 'dashed')+
+        stat_cor(p.accuracy = 0.01,
+                 col = 'blue')
+
+
+```
+
+```{r scatter plot for our predictions for vbayesaverage, warning=F, message=F, fig.height=6, fig.width=10}
+
+preds_validation_tidied %>%
+        gather("outcome", ".pred",
+               -.row, -game_id, -name) %>%
+        group_by(outcome) %>%
+        arrange(desc(.pred)) %>%
+        mutate(rank = row_number()) %>%
+        mutate(outcome = gsub("stan_lm", "stan", outcome)) %>%
+        separate(outcome, into = c("outcome", "method"), sep="_") %>%
+        left_join(., games_validation %>%
+                          select(game_id, name,
+                                 average,
+                                 bayesaverage,
+                                 usersrated,
+                                 averageweight,
+                                 numweights) %>%
+                          gather("outcome", "actual",
+                                 -game_id, -name, -numweights),
+                  by = c("game_id", "name", "outcome")) %>%
+        filter(outcome %in% c("bayesaverage")) %>%
+        ggplot(., aes(x=.pred,
+                      label = name,
+                      y=actual))+
+        geom_point(alpha = 0.8)+
+        geom_text(size = 2,
+                  vjust = -1,
+                  check_overlap=T)+
+        facet_wrap(outcome ~ method,
+                   ncol = 3,
+                   scales = "free")+
+        theme_bw(8)+
+        geom_abline(slope =1,
+                    intercept = 0,
+                    linetype = 'dashed')+
+        stat_cor(p.accuracy = 0.01,
+                 col = 'blue')
+
+
+```
+
+For the user ratings and the geek rating in particular, we see the models pretty consistently overpredict games in the validation set. This has to do with what I mentioned before, we're in a bit of a waiting game to see if these games will eventually move.
+
+## Tables
+
+And as much as I like scatter plots, if we want to simply understand the aggregate performance of each model for each outcome, we really just need a table.
+
+```{r get a table}
+
+preds_validation_tidied %>%
+        gather("outcome", ".pred",
+               -.row, -game_id, -name) %>%
+        group_by(outcome) %>%
+        arrange(desc(.pred)) %>%
+        mutate(rank = row_number()) %>%
+        mutate(outcome = gsub("stan_lm", "stan", outcome)) %>%
+        separate(outcome, into = c("outcome", "method"), sep="_") %>%
+        left_join(., games_validation %>%
+                          select(game_id, name,
+                                 average,
+                                 bayesaverage,
+                                 usersrated,
+                                 averageweight,
+                                 numweights) %>%
+                          mutate(users = usersrated) %>%
+                          gather("outcome", "actual",
+                                 -game_id, -name, -numweights, -users),
+                  by = c("game_id", "name", "outcome")) %>%
+     #   filter(users > log(100)) %>%
+        group_by(outcome, method) %>%
+        reg_metrics(truth = actual,
+                    estimate = .pred,
+                    na_rm = T) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        spread(method, .estimate) %>%
+        select(outcome, .metric, glmnet, stan, xgbTree, indirect.glmnet, indirect.stan, indirect.xgbTree) %>%
+        flextable() %>%
+        autofit()
+
+```
+
+Generally speaking, the boosted trees tend to exhibit the strongest performance regardless of outcome and evaluation metric, though the improvement over the linear models is not dramatic. 
+
+## Comparing Models
+
+If we plot the predictions from the models for a sample of games, we can get a sense of where they agree and where they consistently miss.
+
+```{r evaluate, warning=F, message=F, fig.height=15, fig.width=12}
+
+set.seed(1999)
+preds_validation_tidied %>%
+        sample_n(100) %>%
+        gather("outcome", ".pred",
+               -.row, -game_id, -name) %>%
+        group_by(outcome) %>%
+        arrange(desc(.pred)) %>%
+        mutate(rank = row_number()) %>%
+        mutate(outcome = gsub("stan_lm", "stan", outcome)) %>%
+        separate(outcome, into = c("outcome", "method"), sep="_") %>%
+        left_join(., games_validation %>%
+                          select(game_id, name,
+                                 average,
+                                 bayesaverage,
+                                 usersrated,
+                                 averageweight,
+                                 numweights) %>%
+                          gather("outcome", "actual",
+                                 -game_id, -name, -numweights),
+                  by = c("game_id", "name", "outcome")) %>%
+        ggplot(., aes(y=reorder_within(name, .pred, outcome),
+                      color = method,
+                      x=.pred),
+               shape = 20)+
+        geom_point(aes(x=actual,
+                       y=reorder_within(name, .pred, outcome)),
+                   color = 'black',
+                   size = 3,
+                   shape = "|")+
+        facet_wrap(outcome ~.,
+                   scales = "free",
+                   ncol = 2)+
+        geom_point()+
+        theme_bw(8)+
+        scale_y_reordered()+
+        scale_color_viridis_d()+
+        ylab("game")
+
+```
+
+## Simulation
+
+As before, we can take a look at simulated datasets from the linear model fit with stan vs the actual.
+
+```{r look at simulations for validation set, warning=F, message=F}
+
+# simulating from bayesaverage model for the validationing set
+direct = bayesplot::ppc_dens_overlay(games_validation$bayesaverage,
+                    bayesaverage_stan_lm_fit %>%
+                            extract_fit_engine() %>%
+                            posterior_predict(.,
+                                              newdata = bayesaverage_stan_lm_fit %>%
+                                                      extract_recipe() %>% 
+                                                      bake(games_validation),
+                                              draws = 100))+
+        theme_bw(8)+
+        scale_color_manual(values = c("black", "deepskyblue1"))+
+        theme(legend.position = "none")+
+        xlab("bayesaverage")+
+        ylab("density")+
+        ggtitle("estimating directly")+
+        coord_cartesian(xlim = c(3.5,
+                                 9.5),
+                        ylim = c(0, 5))
+
+# simualte from usersrated and average models, then compute bayesaverage
+set.seed(2)
+sims = average_stan_lm_fit %>%
+        extract_fit_engine() %>%
+        posterior_predict(draws = 100) %>%
+        tidy_draws() %>%
+        gather(".row", "average",
+               -.chain, -.iteration, -.draw) %>%
+        bind_cols(.,
+                  usersrated_stan_lm_fit %>%
+                          extract_fit_engine() %>%
+                          posterior_predict(draws = 100) %>%
+                          tidy_draws() %>%
+                          gather(".row", "usersrated",
+                                 -.chain, -.iteration, -.draw) %>%
+                          select(usersrated)) %>%
+        mutate(usersrated = plyr::round_any(exp(usersrated), 50)) %>%
+        mutate(bayesaverage = (
+                ((1000*5.5) + (usersrated*average)) /
+                        (1000 + usersrated)))
+
+indirect = sims %>%
+        filter(.iteration %in% (sample(1:max(sims$.iteration), 25))) %>%
+        ggplot(., aes(x=bayesaverage,
+                      group = .iteration))+
+        geom_density(alpha = 0.5,
+                     lwd = 0.75,
+                     color = 'deepskyblue1')+
+        geom_density(data = games_validation %>%
+                              mutate(.iteration = 0),
+                      aes(x=bayesaverage),
+                      color = 'black')+
+        theme_bw(8)+
+                ggtitle("estimating indirectly (average + usersrated)")+
+        coord_cartesian(xlim = c(3.5,
+                                 9.5),
+                        ylim = c(0, 5))
+
+
+suppressWarnings({
+suppressMessages({
+        direct + indirect +
+                plot_annotation(title = 'comparing simulated datasets to actual',
+                                subtitle = 'simulated in blue, actual in black')+
+                theme(plot.title = element_text(size = 8))
+})
+})
+
+rm(direct, indirect, sims)
+
+
+```
+
+We can also examine the uncertainty around our prediction with the linear model via simulation. We can plot the 80% prediction interval for the geek rating for a sample of games compared to where they currently sit. 
+
+```{r pull draws and compare, fig.height=15, fig.width=12, warning=F, message=F}
+
+p <- c(0.05, .1, .2, 0.5, 0.8, .9, .95)
+p_names <- map_chr(p, ~paste0("perc_", .x*100))
+p_funs <- map(p, ~ purrr::partial(quantile, probs = .x, na.rm = TRUE)) %>% 
+        purrr::set_names(nm = p_names)
+
+set.seed(2)
+games_samp = games_validation %>%
+        sample_n(200) 
+
+left = bayesaverage_stan_lm_fit %>%
+        extract_fit_engine() %>%
+        posterior_predict(.,
+                          newdata = bayesaverage_stan_lm_fit %>%
+                                  extract_recipe() %>% 
+                                  bake(games_samp),
+                  draws = 1000) %>%
+        tidy_draws() %>%
+        gather(".row", ".pred",
+               -.chain, -.iteration, -.draw) %>%
+        group_by(.row) %>%
+        summarize_at(vars(.pred), funs(!!!p_funs)) %>%
+        mutate(.row = as.integer(.row)) %>%
+        left_join(., games_samp %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, bayesaverage),
+                  by = ".row") %>%
+        ggplot(., aes(y=reorder(name, perc_50),
+                      x=perc_50,
+                      xmin = perc_5,
+                      xmax = perc_95))+
+        geom_pointinterval(color = 'deepskyblue1')+
+        geom_point(aes(x = bayesaverage),
+                   color = 'black')+
+        theme_bw(8)+
+        ylab("game")+
+        xlab("bayesaverage")
+
+
+set.seed(2)
+right = average_stan_lm_fit %>%
+        extract_fit_engine() %>%
+        posterior_predict(.,
+                          newdata = average_stan_lm_fit %>%
+                                  extract_recipe() %>% 
+                                  bake(games_samp),
+                  draws = 1000) %>%
+        tidy_draws() %>%
+        gather(".row", "average",
+               -.chain, -.iteration, -.draw) %>%
+        select(.row, average) %>%
+        bind_cols(.,
+                  usersrated_stan_lm_fit %>%
+                          extract_fit_engine() %>%
+                          posterior_predict(.,
+                                  newdata = usersrated_stan_lm_fit %>%
+                                          extract_recipe() %>% 
+                                          bake(games_samp),
+                        draws = 1000) %>%
+                          tidy_draws() %>%
+                          gather(".row", "usersrated",
+                                 -.chain, -.iteration, -.draw) %>%
+                          select(usersrated)) %>%
+        mutate(usersrated = plyr::round_any(exp(usersrated), 50)) %>%
+        mutate(bayesaverage = (
+                ((1000*5.5) + (usersrated*average)) /
+                        (1000 + usersrated))) %>%
+        # mutate(bayesaverage = (
+        #         ((1000*5.5) + (exp(usersrated)*average)) /
+        #                 (1000 + exp(usersrated)))) %>%
+        group_by(.row) %>%
+        summarize_at(vars(bayesaverage), funs(!!!p_funs)) %>%
+        mutate(.row = as.integer(.row)) %>%
+        left_join(., games_samp %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, bayesaverage),
+                  by = ".row") %>%
+        ggplot(., aes(y=reorder(name, perc_50),
+                      x=perc_50,
+                      xmin = perc_5,
+                      xmax = perc_95))+
+        geom_pointinterval(color = 'deepskyblue1')+
+        geom_point(aes(x = bayesaverage),
+                   color = 'black')+
+        theme_bw(8)+
+        ylab("game")+
+        xlab("bayesaverage")
+
+
+left+right
+
+rm(left,
+   right)
+
+```
+
+```{r remove our fits from the validation set} 
+
+rm(list = ls(pattern = "last_fit"))
+rm(list = ls(pattern = "stan_lm_fit"))
+rm(trained_workflows)
+rm(tune_results)
+
+```
+
+# Predicting Upcoming Games
+
+With all of this behind us, we can refit the models to the training and validation set in order to predict upcoming games. 
+
+```{r refit models to training and validation}
+
+## finalize workflows
+
+### outcome 1
+## average
+# glmnet
+set.seed(1999)
+average_glmnet_final_fit= average_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$average_glmnet_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+# xgbTree
+set.seed(1999)
+average_xgbTree_final_fit= average_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$average_xgbTree_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+### outcome 2
+## bayesaverage
+# glmnet
+set.seed(1999)
+bayesaverage_glmnet_final_fit= bayesaverage_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$bayesaverage_glmnet_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+# xgbTree
+set.seed(1999)
+bayesaverage_xgbTree_final_fit= bayesaverage_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$bayesaverage_xgbTree_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+### outcome 3
+## usersrated
+# glmnet
+set.seed(1999)
+usersrated_glmnet_final_fit= usersrated_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$usersrated_glmnet_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+# xgbTree
+set.seed(1999)
+usersrated_xgbTree_final_fit= usersrated_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$usersrated_xgbTree_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+### outcome 4
+## averageweight
+# glmnet
+set.seed(1999)
+averageweight_glmnet_final_fit= averageweight_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$averageweight_glmnet_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+# xgbTree
+set.seed(1999)
+averageweight_xgbTree_final_fit= averageweight_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$averageweight_xgbTree_tune) %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+
+# register parallel
+all_cores <- parallel::detectCores(logical = FALSE-2)
+cl <- parallel::makePSOCKcluster(all_cores)
+doParallel::registerDoParallel(cl)
+
+# stan models
+### fit stan models by outcome
+# average
+average_stan_final_fit = average_stan_lm_workflow %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+# bayesbayesaverage
+bayesaverage_stan_final_fit = bayesaverage_stan_lm_workflow %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+# usersrated
+usersrated_stan_final_fit = usersrated_stan_lm_workflow %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+# averageweight
+averageweight_stan_final_fit = averageweight_stan_lm_workflow %>%
+        fit(bind_rows(games_train,
+                      games_validation))
+
+registerDoSEQ()
+
+```
+
+We'll then save these models to in order to use them more easily, but we can then predict upcoming games.
+
+```{r save models, eval=F}
+
+# get names of trained
+final_models = ls(pattern="final_fit")
+
+# save each workflow
+for(i in 1:length(final_models)) {
+        
+        readr::write_rds(
+                rlang::sym(final_models[i]),
+                 paste(here::here("models", "repository",
+                                  final_models[i[]]),
+                       "_", Sys.Date(), ".Rds", sep=""))
+}
+```
+
+```{r predict test }
+
+# get model worfkows
+final_workflows = mget(ls(pattern = "_final_fit")) # get stan fits
+
+# now predict the test set with these workflows
+preds_test = lapply(final_workflows,
+                          function(x)
+                                  predict(x, new_data = games_test %>%
+                                                  mutate(averageweight = NA) %>%
+                                                  filter(yearpublished > 2020))) %>%
+        rbindlist(idcol = T) %>%
+        as_tibble()
+
+# calculate bayesaverage
+preds_test_tidied = preds_test %>%
+        group_by(.id) %>%
+        mutate(.row = row_number()) %>%
+        left_join(., games_test %>%
+                          filter(yearpublished > 2020) %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, yearpublished),
+                  by = ".row") %>%
+        mutate(.id = gsub("_final", "", gsub("_fit", "", .id))) %>%
+        spread(.id, .pred) %>%
+        mutate(bayesaverage_indirect.glmnet = (
+                ((1000*5.5) + (exp(usersrated_glmnet)*average_glmnet)) /
+                        (1000 + exp(usersrated_glmnet)))
+               ) %>%
+        mutate(bayesaverage_indirect.xgbTree = (
+                ((1000*5.5) + (exp(usersrated_xgbTree)*average_xgbTree)) /
+                        (1000 + exp(usersrated_xgbTree)))
+               ) %>%
+        mutate(bayesaverage_indirect.stan_lm = (
+                ((1000*5.5) + (exp(usersrated_stan)*average_stan)) /
+                        (1000 + exp(usersrated_stan)))
+               ) %>%
+        mutate_if(is.numeric, round, 3) %>%
+        arrange(desc(bayesaverage_indirect.xgbTree))
+
+
+```
+
+## Highest Expected Average Rating
+
+What upcoming games are expected to have the highest average rating?
+
+```{r upcoming game ratings for average}
+
+preds_test_tidied %>%
+        select(yearpublished, game_id, name,
+               starts_with("average")) %>%
+        arrange(desc(average_xgbTree)) %>%
+        left_join(., games_test %>%
+                          select(game_id, average),
+                  by = "game_id") %>%
+        select(yearpublished, game_id, name, average, starts_with("average_")) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        arrange(desc(average_xgbTree)) %>%
+        DT::datatable()
+
+```
+
+## Highest Expected User Ratings
+
+What upcoming games are expected to be the most popular (ie, have the most ratings)?
+
+```{r upcoming game ratings for use rratings}
+
+preds_test_tidied %>%
+        select(yearpublished, game_id, name,
+               starts_with("usersrated")) %>%
+        mutate_at(vars(starts_with("usersrated_")),
+                  ~ exp(.) %>%
+                          plyr::round_any(50)) %>%
+        arrange(desc(usersrated_xgbTree)) %>%
+        left_join(., games_test %>%
+                          select(game_id, usersrated) %>%
+                          mutate(usersrated = exp(usersrated)),
+                  by = "game_id") %>%
+        select(yearpublished, game_id, name, usersrated, starts_with("usersrated_")) %>%
+        DT::datatable()
+
+```
+
+## Highest Expected Geek Rating
+
+What upcoming games are expected to have the highest geek rating (user ratings + average)?
+
+```{r upcoming game ratings}
+
+preds_test_tidied %>%
+        select(yearpublished, game_id, name,
+               starts_with("bayesaverage")) %>%
+        arrange(desc(bayesaverage_xgbTree)) %>%
+        left_join(., games_test %>%
+                          select(game_id, bayesaverage),
+                  by = "game_id") %>%
+        select(yearpublished, game_id, name, bayesaverage, starts_with("bayesaverage_indirect")) %>%
+        rename_at(vars(starts_with("bayesaverage")),
+                      ~ gsub("bayesaverage", "geek", .)) %>%
+        rename_at(vars(starts_with("geek_indirect")),
+                  ~ gsub("indirect.", "", .)) %>%
+        rename(geek_stan = geek_stan_lm) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(yearpublished, game_id, name, geek, starts_with("geek_")) %>%
+        arrange(desc(geek_stan)) %>%
+        DT::datatable()
+
+```
+
