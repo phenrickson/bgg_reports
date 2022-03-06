@@ -11,7 +11,7 @@ If you love boardgames and data, [**boardgamegeek.com**](https://boardgamegeek.c
 
 <center>
 
-![](/Users/Phil/Documents/projects/bgg_reportsimages/predicting_games.png){width=45%} ![](/Users/Phil/Documents/projects/bgg_reportsimages/outcome_coefs.png){width=45%}
+![](/Users/Phil/Documents/projects/bgg_reports/images/predicting_games.png){width=45%} ![](/Users/Phil/Documents/projects/bgg_reports/images/outcome_coefs.png){width=45%}
 
 </center>
 
@@ -21,7 +21,7 @@ What upcoming board games are **likely to be popular within the BGG community?**
 
 <center>
 
-![](/Users/Phil/Documents/projects/bgg_reportsimages/averages_and_usersrated.png){width=45%} ![](/Users/Phil/Documents/projects/bgg_reportsimages/hotness_adjusted.png){width=45%}
+![](/Users/Phil/Documents/projects/bgg_reports/images/averages_and_usersrated.png){width=45%} ![](/Users/Phil/Documents/projects/bgg_reports/images/hotness_adjusted.png){width=45%}
 
 </center>
 
