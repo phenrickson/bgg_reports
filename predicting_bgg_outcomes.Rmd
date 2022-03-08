@@ -2597,7 +2597,7 @@ preds_test_tidied %>%
 
 What upcoming games are expected to be the most popular (ie, have the most ratings)?
 
-```{r upcoming game ratings for use rratings}
+```{r upcoming game ratings for user atings}
 
 preds_test_tidied %>%
         select(yearpublished, game_id, name,
