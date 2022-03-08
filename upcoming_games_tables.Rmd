@@ -1,0 +1,685 @@
+---
+title: "Predicting Upcoming Boardgames"
+output: 
+  html_document:
+    toc: TRUE #adds a Table of Contents
+    number_sections: TRUE #number your headings/sections
+    toc_float: TRUE #let your ToC follow you as you scroll
+    keep_md: no
+    fig.caption: yes
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = F,
+                      error=F,
+                      dev="png",
+                      fig.width = 10,
+                      fig.height = 6)
+
+options(knitr.duplicate.label = "allow")
+
+options(scipen=999)
+
+# load packages to be used
+source(here::here("scripts/load_packages.R"))
+
+# additional libraries
+# parallel
+library(doParallel)
+library(parallelly)
+
+# for stan
+library(brms)
+library(broom.mixed)
+
+# load custom functions to be used
+source(here::here("functions/theme_phil.R"))
+source(here::here("functions/tidy_name_func.R"))
+source(here::here("functions/pivot_and_dummy_types.R"))
+source(here::here("scripts/load_packages.R"))
+source(here::here("functions/get_bgg_data_from_github.R"))
+source(here::here("functions/get_bgg_data_from_api.R"))
+source(here::here("functions/convert_bgg_api_data_to_tables.R"))
+
+
+source(here::here("functions/predict_bgg_outcomes.R"))
+source(here::here("functions/average_col_func.R"))
+source(here::here("functions/bayesaverage_col_func.R"))
+source(here::here("functions/usersrated_col_func.R"))
+source(here::here("functions/complexity_col_func.R"))
+
+
+```
+
+```{r load functions and workflows, warning=F, message=F}
+
+# get functions
+
+# load in modeling workflows
+# recipe
+base_recipe = readr::read_rds(here::here("models", "active", "base_recipe.Rdata"))
+
+# workflows
+# xgbTree
+average_workflow = readr::read_rds(here::here("models", "active", "average_xgbTree_final_fit.Rds"))
+average_workflow = average_workflow$average_xgbTree_final_fit
+
+averageweight_workflow = readr::read_rds(here::here("models", "active", "averageweight_xgbTree_final_fit.Rds"))
+averageweight_workflow = averageweight_workflow$averageweight_xgbTree_final_fit
+
+usersrated_workflow = readr::read_rds(here::here("models", "active", "usersrated_xgbTree_final_fit.Rds"))
+usersrated_workflow = usersrated_workflow$usersrated_xgbTree_final_fit
+
+# stan 
+average_stan_workflow = readr::read_rds(here::here("models", "active", "average_stan_final_fit.Rds"))
+average_stan_workflow = average_stan_workflow$average_stan_final_fit
+
+usersrated_stan_workflow = readr::read_rds(here::here("models", "active", "usersrated_stan_final_fit.Rds"))
+usersrated_stan_workflow = usersrated_stan_workflow$usersrated_stan_final_fit
+
+```
+
+```{r get games from bgg}
+
+# get games from today
+bgg_today = get_bgg_data_from_github(Sys.Date())
+
+set.seed(5)
+ids = bgg_today %>%
+        filter(game_release_year== 2021 | game_release_year == 2022) %>%
+        pull(game_id) 
+
+```
+
+```{r push through api, warning=F, message=F}
+
+# push through api
+api_returned = get_bgg_api_data(ids)
+
+# convert to tabular
+api_tables = convert_bgg_api_data_to_tables(api_returned)
+
+# convert to format for model
+suppressMessages({
+api_games_info = api_tables$game_info %>%
+        bind_rows(., base_recipe$template[0,]) %>% # bind to our template format
+        select(one_of(names(base_recipe$template))) # keep only variables in that format
+})
+
+```
+
+```{r now predict}
+
+# point estimates
+source(here::here("functions", "predict_bgg_outcomes_func.R"))
+
+# get estimates
+preds = predict_bgg_outcomes_func(api_games_info)
+
+```
+
+# Top 100s
+
+What games are expected to be the most popular? In this section, I display the model's top 100 games for the geek rating, average rating, and number of users rated.
+
+## Highest Expected Geek Rating
+
+```{r display preds for geek rating 100}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        select(Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        arrange(desc(GeekRating)) %>%
+        mutate(Rank = row_number()) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Rank, everything()) %>%
+        head(100) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+## Highest Expected Average Rating 
+
+```{r display preds for average rating 100}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        select(Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Rank, everything()) %>%
+        head(100) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+## Highest Expected User Ratings
+
+```{r display preds for userrating 100}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        select(Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        arrange(desc(UserRatings)) %>%
+        mutate(Rank = row_number()) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Rank, everything()) %>%
+        head(100) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+
+
+
+
+
+# Top 50 Average by Game
+
+In this section, I show games sorted by their expected average rating, filtering to the top 50 games within specific categories on BGG.
+
+## Fantasy
+
+```{r fantasy average top 50}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        filter(game_id %in% (api_games_info %>% filter(category_fantasy==1) %>% pull(game_id))) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        mutate(Category = "Fantasy") %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        select(Category, Rank, Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        head(50) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+
+
+
+## Economic
+
+```{r Economic average top 50}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        filter(game_id %in% (api_games_info %>% 
+                                     filter(category_economic==1) %>% pull(game_id))) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        mutate(Category = "Economic") %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        select(Category, Rank, Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        head(50) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+
+## Wargame
+```{r Wargame average top 50}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        filter(game_id %in% (api_games_info %>% 
+                                     filter(category_wargame==1) %>% pull(game_id))) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        mutate(Category = "Wargame") %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        select(Category, Rank, Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        head(50) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+## Science Fiction
+```{r Science Fiction average top 50}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        filter(game_id %in% (api_games_info %>% filter(category_science_fiction==1) %>% pull(game_id))) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        mutate(Category = "Science Fiction") %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        select(Category, Rank, Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        head(50) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+
+
+
+## Party
+
+```{r Party average top 50}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        filter(game_id %in% (api_games_info %>% 
+                                     filter(category_party_game==1) %>% pull(game_id))) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        mutate(Category = "Party") %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        select(Category, Rank, Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        head(50) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Complexity",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Complexity"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Complexity"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+```
+
+
+
+
+
+
