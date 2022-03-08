@@ -15,9 +15,11 @@ If you love boardgames and data, [**boardgamegeek.com**](https://boardgamegeek.c
 
 </center>
 
-What upcoming board games are **likely to be popular within the BGG community?** I train a variety of predictive models on historical BGG data in order to estimate a variety of outcomes for newly released games. Why are some games expected to better than others? How accurately can we predict upcoming games? What games are likely to become the new hotness? Take a look to see what the models think:
+What upcoming board games are **likely to be popular within the BGG community?** I train a variety of predictive models on historical BGG data in order to estimate a variety of outcomes for newly released games. Why are some games expected to better than others? How accurately can we predict upcoming games? What games are likely to become the new hotness? 
 
-[Top Upcoming Games Using the Models)](upcoming_games_tables.html)
+[Predictions](upcoming_games_tables.html) // [Methodology](predicting_bgg_outcomes.html)
+
+Last updated: `r Sys.Date()`
 
 2. [**Adjusting BGG Ratings: Complexity and 'The Hotness'**)](adjusting_bgg_ratings.html)
 

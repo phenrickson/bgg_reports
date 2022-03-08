@@ -814,6 +814,10 @@ categorical_features_selected= rbindlist(mget(ls(pattern = "selected_"))) %>%
         as_tibble() %>%
         mutate(selected = "yes")
 
+# save this for use in user collection models
+readr::write_rds(categorical_features_selected,
+                 file = here::here("data", "categorical_features_selected.Rdata"))
+
 # select in full game types set
 game_types_selected = game_types %>%
         left_join(., categorical_features_selected %>%
