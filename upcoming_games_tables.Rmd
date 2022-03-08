@@ -326,7 +326,7 @@ preds$estimated_outcomes_xgbTree %>%
 
 
 
-# Top 50 Average by Game
+# Top 50 Average by Game Type
 
 In this section, I show games sorted by their expected average rating, filtering to the top 50 games within specific categories on BGG.
 
