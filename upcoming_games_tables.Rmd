@@ -52,6 +52,57 @@ source(here::here("functions/complexity_col_func.R"))
 
 ```
 
+```{r flextable settings, echo=F, warning=F, message=F, results='hide'}
+
+#library(webshot2)
+library(flextable)
+set_flextable_defaults(theme_fun = theme_alafoli,
+                       font.color = "grey10",
+  padding.bottom = 6, 
+  padding.top = 6,
+  padding.left = 6,
+  padding.right = 6,
+  background.color = "white")
+
+```
+
+
+```{r connect to big query and query tables we need, warning=F, message=F, results='hide'}
+
+library(bigrquery)
+
+# get project credentials
+PROJECT_ID <- "gcp-analytics-326219"
+BUCKET_NAME <- "test-bucket"
+
+# authorize
+bq_auth(email = "phil.henrickson@aebs.com")
+
+# establish connection
+bigquerycon<-dbConnect(
+        bigrquery::bigquery(),
+        project = PROJECT_ID,
+        dataset = "bgg"
+)
+
+# query table of game info to most recent load
+active_games<-DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_game_info
+                              where timestamp = (SELECT MAX(timestamp) as most_recent FROM bgg.api_game_info)') %>%
+        select(-starts_with("rank")) %>%
+        mutate(numweights = as.numeric(numweights)) %>%
+        mutate_at(c("averageweight",
+                    "playingtime",
+                    "minplaytime",
+                    "maxplaytime",
+                    "yearpublished"),
+                  ~ case_when(. == 0 ~ NA_real_,
+                              TRUE ~ .))
+
+
+```
+
+
 ```{r load functions and workflows, warning=F, message=F}
 
 # get functions
@@ -322,13 +373,9 @@ preds$estimated_outcomes_xgbTree %>%
 ```
 
 
+# Top 50 by Game Type
 
-
-
-
-# Top 50 Average by Game Type
-
-In this section, I show games sorted by their expected average rating, filtering to the top 50 games within specific categories on BGG.
+In this section, I show games sorted by their expected **average** rating, filtering to the top 50 games within specific categories on BGG.
 
 ## Fantasy
 
@@ -682,4 +729,35 @@ preds$estimated_outcomes_xgbTree %>%
 
 
 
+
+
+
+# Interactive Table
+
+```{r interactive table for predictions}
+
+# boosted trees
+preds$estimated_outcomes_xgbTree %>%
+        select(-.row) %>%
+        left_join(., api_games_info %>%
+                          select(game_id, name, yearpublished), 
+                  by = c("game_id")) %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate_at(c("yearpublished", "game_id"),
+                  ~ as.character(.)) %>%
+        rename(complexity = averageweight) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Game = name,
+               Average = average,
+               GeekRating = bayesaverage,
+               UserRatings = usersrated,
+               Complexity = complexity) %>%
+        select(Published, ID, Game, UserRatings, Average, GeekRating, Complexity) %>%
+        arrange(desc(GeekRating)) %>%
+        mutate(Rank = row_number()) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        DT::datatable(rownames=F)
+
+```
 
