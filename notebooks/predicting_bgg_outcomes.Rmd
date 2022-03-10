@@ -1,15 +1,24 @@
 ---
 title: "Predicting Upcoming Boardgames"
+author: Phil Henrickson
+date: "`r Sys.Date()`"
 output: 
   html_document:
     toc: TRUE #adds a Table of Contents
     number_sections: TRUE #number your headings/sections
     toc_float: TRUE #let your ToC follow you as you scroll
+    theme: cerulean #select a different theme from the default
     keep_md: no
     fig.caption: yes
+header-includes:
+ \usepackage{float}
 params:
   end_training_year: 2019
   min_ratings: 100
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, 
+  encoding = encoding, 
+  output_dir = here::here("")) })
 ---
 
 ```{r global settings, echo=F, warning=F, message=F, results='hide'}
@@ -814,10 +823,6 @@ categorical_features_selected= rbindlist(mget(ls(pattern = "selected_"))) %>%
         as_tibble() %>%
         mutate(selected = "yes")
 
-# save this for use in user collection models
-readr::write_rds(categorical_features_selected,
-                 file = here::here("data", "categorical_features_selected.Rdata"))
-
 # select in full game types set
 game_types_selected = game_types %>%
         left_join(., categorical_features_selected %>%
@@ -974,7 +979,7 @@ rm(df)
 
 We can look at the correlation between our outcomes, the main features we have for games (playtime, player count, complexity) and some of the categorical features.
 
-```{r correlation between predictors and categories, fig.height=12, fig.width=12, fig.cap = "Correlation plot of game info and game categories"}
+```{r correlation between predictors and categories, fig.height=12, fig.width=12, fig.ca = "Correlation plot of game info and game categories"}
 
 df = games_train %>%
         select_if(is.numeric) %>%
@@ -1145,20 +1150,13 @@ base_recipe = recipe(x = games_train) %>%
                            "artist_chris_quilliams")), # allow for some specific artists, well known in recent years
                  freq_cut = 250/1) %>%
         step_corr(all_predictors(),
-                  threshold = 0.9) # remove highly, highly correlated features 
-     #   check_missing(all_predictors()) # check for missingness in predictors
-
-```
-
-
-```{r save the base recipe, eval=F}
+                  threshold = 0.9) # remove highly, highly correlated features
 
 # save the base recipe
 readr::write_rds(base_recipe,
-                 here::here("models","repository",
+                 here::here("models",
                             paste("base_recipe",
                                   "_", Sys.Date(), ".Rdata", sep="")))
-
 
 ```
 
@@ -1417,9 +1415,9 @@ For the models that rely on tuning parameters (glmnet and xgbTree) we'll define 
 ```{r set up folds}
 
 # create folds for training
-set.seed(2)
+set.seed(1999)
 train_folds= vfold_cv(games_train,
-                     strata = average,
+                      strata = average,
                       v=5)
 
 ```
@@ -1573,8 +1571,8 @@ rm(list=ls(pattern="stan_lm_fit"))
 
 
 ```{r stan models, warning=F, message=F}
-# 
-# # # save tuning results
+
+# # save tuning results
 # readr::write_rds(stan_lm_train_results,
 #                  file = here::here("models", "stan_lm_train_results.Rds"))
 
@@ -2408,7 +2406,7 @@ rm(tune_results)
 
 With all of this behind us, we can refit the models to the training and validation set in order to predict upcoming games. 
 
-```{r refit models to training and validation, warning=F, message=F}
+```{r refit models to training and validation}
 
 ## finalize workflows
 
@@ -2512,26 +2510,17 @@ We'll then save these models to in order to use them more easily, but we can the
 ```{r save models, eval=F}
 
 # get names of trained
-final_models = mget(ls(pattern="final_fit"))
+final_models = ls(pattern="final_fit")
 
 # save each workflow
 for(i in 1:length(final_models)) {
         
         readr::write_rds(
-                final_models[i],
-                here::here("models", "repository",
-                                  paste(
-                                          names(final_models)[i],
-                                          "_", 
-                                          Sys.Date(),
-                                          ".Rds",
-                                          sep="")
-                           )
-        )
+                rlang::sym(final_models[i]),
+                 paste(here::here("models", "repository",
+                                  final_models[i[]]),
+                       "_", Sys.Date(), ".Rds", sep=""))
 }
-
-rm(final_models)
-
 ```
 
 ```{r predict test }
@@ -2601,7 +2590,7 @@ preds_test_tidied %>%
 
 What upcoming games are expected to be the most popular (ie, have the most ratings)?
 
-```{r upcoming game ratings for user atings}
+```{r upcoming game ratings for use rratings}
 
 preds_test_tidied %>%
         select(yearpublished, game_id, name,
@@ -2614,7 +2603,6 @@ preds_test_tidied %>%
                           select(game_id, usersrated) %>%
                           mutate(usersrated = exp(usersrated)),
                   by = "game_id") %>%
-        rename(current = usersrated) %>%
         select(yearpublished, game_id, name, usersrated, starts_with("usersrated_")) %>%
         DT::datatable()
 
@@ -2640,8 +2628,7 @@ preds_test_tidied %>%
                   ~ gsub("indirect.", "", .)) %>%
         rename(geek_stan = geek_stan_lm) %>%
         mutate_if(is.numeric, round, 2) %>%
-        rename(current = geek) %>%
-        select(yearpublished, game_id, name, current, starts_with("geek_")) %>%
+        select(yearpublished, game_id, name, geek, starts_with("geek_")) %>%
         arrange(desc(geek_stan)) %>%
         DT::datatable()
 
