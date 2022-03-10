@@ -13,6 +13,7 @@ tidy_name_func <-
                 x<-gsub("mechanic_memory", "mechanic_memory_mechanicanic", x)
                 x<-gsub("family_components_miniatures", "has_miniatures", x)
                 x<-gsub("designer_uncredited", "uncredited_designer", x)
+                x<-gsub("trunc_", "", x)
                 x<-gsub("category_","", x)
                 x<-gsub("components_", "", x)
                 x<-gsub("country_", "", x)
@@ -30,7 +31,9 @@ tidy_name_func <-
                 x<-gsub("minplayers", "Min Players", x)
                 x<-gsub("_", " ", x)
                 
+                
                 x = str_to_title(x)
+                x = gsub("Cut Playing Time X", "Playing Time", x)
                 x = gsub("Rockpaperscissors", "Rock Paper Scissors", x)
                 x = gsub("Collectible Collectible", "Collectible", x)
                 x = gsub("Murdermystery", "Murder Mystery", x)
@@ -50,6 +53,7 @@ tidy_name_func <-
                 x = gsub("3d", "3D", x)
                 x = gsub("Usa", "USA", x)
                 x = gsub("Averageweight", "Average Weight", x)
+                x =
                 x
                 
         }

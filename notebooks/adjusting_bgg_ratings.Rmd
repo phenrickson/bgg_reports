@@ -1,24 +1,15 @@
 ---
 title: "Adjusted BGG Ratings: Accounting for Complexity and 'The Hotness'"
-author: Phil Henrickson
-date: "`r Sys.Date()`"
 output: 
   html_document:
     toc: TRUE #adds a Table of Contents
     number_sections: TRUE #number your headings/sections
     toc_float: TRUE #let your ToC follow you as you scroll
-    theme: cerulean #select a different theme from the default
     keep_md: no
     fig.caption: yes
-header-includes:
- \usepackage{float}
 params:
   end_training_year: 2019
   min_ratings: 100
-knit: (function(inputFile, encoding) {
-  rmarkdown::render(inputFile, 
-  encoding = encoding, 
-  output_dir = here::here("")) })
 ---
 
 ```{r global settings, echo=F, warning=F, message=F, results='hide'}
