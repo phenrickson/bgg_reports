@@ -1,17 +1,14 @@
 ---
 title: "Analyzing Individual BGG Users"
-author: Phil Henrickson
-date: "`r Sys.Date()`"
 output: 
   html_document:
     toc: TRUE #adds a Table of Contents
-    theme: cerulean
     number_sections: TRUE #number your headings/sections
     toc_float: TRUE #let your ToC follow you as you scroll
     keep_md: no
     fig.caption: yes
 params:
-  username: "Watch%20It%20Played"
+  username: "mrbananagrabber"
   end_training_year: 2020
   min_training_ratings: 100
 ---
@@ -137,7 +134,7 @@ tidy_username =  gsub("\\%20", "", params$username)
 
 # What is this? {-}
 
-This notebook contains a set of analyses for analyzing `r tidy_username` boardgamegeek collection. The bulk of the analysis is focused on building a user-specific predictive model to predict the games that the specified user is likely to own. This enables us to ask questions like, based on the games the user currently owns, what games are a good fit for their collection? What upcoming games are they likely to purchase?
+This notebook contains a set of analyses for analyzing **`r tidy_username`'s** boardgamegeek collection. The bulk of the analysis is focused on building a user-specific predictive model to predict the games that the specified user is likely to own. This enables us to ask questions like, based on the games the user currently owns, what games are a good fit for their collection? What upcoming games are they likely to purchase?
 
 ```{r load previously stored data and create games model, warning=F, mesage=F, echo=F}
 

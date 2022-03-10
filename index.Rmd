@@ -37,24 +37,23 @@ I use a variety techniques to make adjustments to the Geek rating on boardgamege
 
 "What upcoming games should I check out?"
 
-Rather than trying to predict how the boardgamegeek community will rate a game, I train predictive models at the individal user level to predict whether someone will be likely to add an upcoming game to their collection. This started as a project to [train a model to identify games for myself](user_reports/mrbananagrabber_2020.html), but then I realized that this could be extended to anyone with a boardgamegeek account and a decent number of games in their collection. This analysis can be run for anyone, so I've run it for a few prominent reviewers to see what upcoming games they're most likely to be interested in:
+Rather than trying to predict how the boardgamegeek community will rate a game, I train models at the individual user level to predict whether someone will be likely to add an upcoming game to their collection. This started as a project to [train a model to identify games for myself](mrbananagrabber_2020.html), but then I realized that this could be extended to anyone with a boardgamegeek account and a decent number of games in their collection. This analysis can be run for anyone, so I've run it for a few prominent reviewers to see what upcoming games they're most likely to be interested in:
 
-[Watch It Played](user_reports/WatchItPlayed_2020.html)
+<!-- [Watch It Played](WatchItPlayed_2020.html) -->
 
-[Mark Bigney (So Very Wrong About Games)](user_reports/Gyges_2020.html)
+<!-- [Mark Bigney (So Very Wrong About Games)](Gyges_2020.html) -->
 
-[rahdo](user_reports/rahdo_2020.html)
+<!-- [rahdo](rahdo_2020.html) -->
 
-[Quinns (Shut Up and Sit Down)](user_reports/Quinns_2020.html)
+<!-- [Quinns (Shut Up and Sit Down)](Quinns_2020.html) -->
 
-[Zee Garcia (The Dice Tower)](user_reports/ZeeGarcia_2020.html)
+<!-- [Zee Garcia (The Dice Tower)](ZeeGarcia_2020.html) -->
 
-[Tom Vasel (The Dice Tower's Library)](user_reports/DTLibrary_2020.html)
+<!-- [Tom Vasel (The Dice Tower's Library)](DTLibrary_2020.html) -->
 
-[me](user_reports/rahdo_2020.html)
+<!-- [me](rahdo_2020.html) -->
 
-[my brother](user_reports/GOBBluth89_2020.html)
-
+<!-- [my brother](GOBBluth89_2020.html) -->
 
 4. [**Finding Boardgame "Neighbors"**]():
 
