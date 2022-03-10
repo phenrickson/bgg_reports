@@ -173,7 +173,7 @@ preds = predict_bgg_outcomes_func(api_games_info)
 
 # Explore the Model's Predictions
 
-Here are the model's predictions for upcoming games for expected user ratings, average, geek rating, and complexity. 
+Here are the model's predictions for uppcoming games for expected user ratings, average, geek rating, and complexity.
 
 ```{r interactive table for predictions}
 
