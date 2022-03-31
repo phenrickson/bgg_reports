@@ -13,7 +13,7 @@
 library(tidyverse)
 library(foreach)
 
-user_list = c("mrbananagrabber")
+#user_list = c("mrbananagrabber")
 #user_list = c("Watch%20It%20Played")
 
 # user_list = c("rahdo",
@@ -24,14 +24,16 @@ user_list = c("mrbananagrabber")
 #               "GOBBluth89",
 #       "Watch%20It%20Played")
 
-# user_list = c("DTLibrary",
-#               "Watch%20It%20Played",
-#               "Quinns",
-#               "rahdo",
-#               "ZeeGarcia",
-#               "Gyges",
-#               "mrbananagrabber",
-#               "GOBBluth89")
+#user_list = c("DTLibrary")
+
+user_list = c("mrbananagrabber")
+              # "Watch%20It%20Played",
+              # "Quinns",
+              # "rahdo",
+              # "ZeeGarcia",
+              # "Gyges",
+              # "mrbananagrabber",
+              # "GOBBluth89")
 
 # user_list = c("
               # "ZeeGarcia",

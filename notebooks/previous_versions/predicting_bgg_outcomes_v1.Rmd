@@ -8,8 +8,8 @@ output:
     keep_md: no
     fig.caption: yes
 params:
-  end_training_year: 2018
-  min_ratings: 30
+  end_training_year: 2019
+  min_ratings: 100
 ---
 
 ```{r global settings, echo=F, warning=F, message=F, results='hide'}
@@ -113,32 +113,11 @@ To answer these questions, we'll make use of historical data from boardgamegeek.
 
 # The Data
 
-The data we are using comes from boardgamegeek.com, which we access by using the open BGG API. We are training models on data that last pulled from BGG on **`r max(as.Date(active_games$timestamp))`**. 
+The data we are using comes from boardgamegeek.com, which we access by using the open BGG API. We are training models on data that last pulled from BGG on **`r max(as.Date(active_games$timestamp))`**.
 
-We will be training models at the *game-level*, where every row corresponds to one game and every column corresponds to a feature of the game. 
+We will be training models at the *game-level*, where every row corresponds to one game and every column corresponds to a feature of the game. As of this date, there are **`r nrow(active_games)`** on boardgamegeek with at least 30 user ratings.
 
-As of our most recent pull, our dataset contains **`r nrow(active_games)`** games. This is the entirety of games on BGG, many of which are unpublished prototypes and have not received any ratings by the BGG community.
-
-If we filter to games with a minimum of 30 user ratings, we have only **`r nrow(active_games %>% filter(usersrated >=30))`** games.
-
-For the bulk of this analysis, we will be training on games that have achieved at least `r params$min_ratings` user ratings. This is a design decision to restrict our sample to games that 1) have received some evaluation from the community and 2) speed up the time in training models. We can later view this as a parameter for tuning, allowing more or less historical games to enter the model for training. Based on some initial tests, `r params$min_ratings` was a useful cutoff point for both model performance and training time. 
-
-We will set up a training and validation split based on time. First, we'll train models on games published through `r params$end_training_year`, then evaluate their performance in predicting games published in `r params$end_training_year + 1` and `r params$end_training_year +2`. We will then make our model selection and retrain the models on all games published through `r params$end_training_year+2` in order to predict upcoming games. 
-
-We will be modeling four different outcomes: average weight, average rating, user ratings, and the geek rating. The geek rating is itself a combination of the average rating and number of user ratings, but I will be interested to see how well we do in modeling it directly vs modeling the underlying components and computing it.
-
-Our model training and evaluation plan will look something like this:
-
-1. Split games into training, validation, and test sets.
-        + Training set: on games published through `r params$end_training_year`
-        + Validation set: games published in `r params$end_training_year +1` and `r params$end_training_year+2`
-        + Test set: games published after `r params$end_training_year+2`
-2. Train candidate models for each outcome
-        + Select tuning parameters via cross validation on training set
-3. Evaluate models on validation set
-        + Identify best performing models
-4. Refit models on training and validation set
-5. Predict test set
+For the purpose of this analysis, the training set will only include games `r params$end_training_year + 1` that have achieved at least `r params$min_ratings` user ratings. This is a design decision to restrict our sample to games that 1) have received some evaluation from the community and 2) speed up the time in training models. We can later view this as a parameter for tuning, allowing more or less historical games to enter the model for training. Based on some initial tests, `r params$min_ratings` was a useful cutoff point for both model performance and training time.
 
 ```{r get basic split of games, echo=F}
 
@@ -147,7 +126,7 @@ train_games = active_games %>%
         filter(!is.na(yearpublished)) %>% # filtering games with missing yearpublished, which is mostly a mix of games that are prototypes
         filter(!is.na(averageweight)) %>% # removing games with no votes on complexity
         filter(numweights > 0) %>% # dont include games that havent had complexity ratings
-        filter(yearpublished <= params$end_training_year) %>% # only include games through end of training set
+        filter(yearpublished <= params$end_training_year) %>% # only include games through 2019
         filter(usersrated > params$min_ratings) # minimum ratings greater than 100
 
 ```
@@ -199,7 +178,6 @@ What features do we have about games? We have basic information about every game
 ```{r examine features of games, warning=F, message=F}
 
 train_games %>%
-        arrange(yearpublished) %>%
         vis_miss()
 
 ```
@@ -208,7 +186,7 @@ train_games %>%
 
 We also have a variety of information about game mechanics, categories, artists, publishers, designers, artists, and so on. Some of these categories are not observed for every game, such as if a game doesn't have expansions or integrations with other games.
 
-This means there are **~180 different mechanics, ~20k publishers, ~ 30k designers, and ~ 22k artists** present in our training set. This is good in the sense that we have ample information about games for models to look at and use in training, but bad in the sense that if we threw all of it into a model we would quickly run up against the [the curse of dimensionality](https://en.wikipedia.org/wiki/Curse_of_dimensionality).
+This means there are **~180 different mechanics, ~7k publishers, ~ 10k designers, and ~ 11k artists** present in our training set. This is good in the sense that we have ample information about games for models to look at and use in training, but bad in the sense that if we threw all of it into a model we would quickly run up against the [the curse of dimensionality](https://en.wikipedia.org/wiki/Curse_of_dimensionality).
 
 
 ```{r shwo types}
@@ -333,7 +311,7 @@ selected_families = summarized_families %>%
 
 ```
 
-Some features we won't include, such as the Mensa Select or implementations on BoardGameArena/Tabletopia, as these are outcomes that typically occur when a game has been popular and shouldn't be used as predictors.
+Some features we won't include, such as the Mensa Select or implementations on BoardGameArena, as these are outcomes that typically occur when a game has been popular and shouldn't be used as predictors.
 
 ### Categories
 
@@ -435,7 +413,7 @@ Mechanics are also pretty well organized, so we don't have to do much filtering.
 
 ```{r now look at mechanics, fig.height=14, fig.width=11}
 
-minimum_prop = 0.000
+minimum_prop = 0.005
 
 # mechanics
 mechanics = train_types %>%
@@ -525,7 +503,7 @@ We'll just keep all of the mechanics, as these are the main features of games th
 
 ### Designers and Artists
 
-How should we handle artist and designer effects? We'll use a much lower minimum proportion here, as very few designers would have designed ~ 100 games. 
+How should we handle artist and designer effects? We'll use a much lower minimum proption here, as very few designers would have designed ~ 100 games. 
 
 ```{r look at designers, warning=F, message=F, fig.height=14, fig.width=11}
 
@@ -573,7 +551,7 @@ designers %>%
                      # size = usersrated,
                       by = game_id,
                       y = var))+
-        geom_point(alpha=0.15,
+        geom_point(alpha=0.05,
                    size = 0.5,
                    position = position_jitternormal(sd_x = 0.1))+
         coord_flip()+
@@ -599,7 +577,7 @@ selected_designers = summarized_designers %>%
 
 ```
 
-This amounts to allowing for designers once they have released about 20 games. We'll more or less take the same approach for artists.
+This amounts to allowing for designers once they have released about 15 games. We'll more or less take the same approach for artists.
 
 ```{r also look at artists, warning=F, message=F, fig.height=14, fig.width=11}
 
@@ -647,7 +625,7 @@ artists %>%
                      # size = usersrated,
                       by = game_id,
                       y = var))+
-        geom_point(alpha=0.15,
+        geom_point(alpha=0.05,
                    size = 0.5,
                    position = position_jitternormal(sd_x = 0.1))+
         coord_flip()+
@@ -898,31 +876,20 @@ First, we'll split the data. We'll set up our training, validation, and test set
 # get full dataset
 games_full = games_model %>%
         mutate(dataset = case_when(yearpublished <= params$end_training_year ~ 'train',
-                                   yearpublished == params$end_training_year+1 | yearpublished == params$end_training_year +2 ~ 'validation',
+                                   yearpublished == params$end_training_year+1 ~ 'validation',
                                    TRUE ~ 'test')) %>%
-        mutate(log_usersrated = log1p(usersrated))
+        mutate(usersrated = log(usersrated))
 
 # filter our training set to only games with at least n ratings
 games_train = games_full %>%
         filter(dataset == 'train') %>%
-        filter(usersrated >= params$min_ratings)
+        filter(usersrated >= log(params$min_ratings))
 
 games_validation = games_full %>%
         filter(dataset == 'validation')
 
 games_test =  games_full %>%
         filter(dataset == 'test')
-
-# count up number of games in each
-bind_rows(games_train,
-          games_validation,
-          games_test) %>%
-        group_by(dataset) %>%
-        count() %>%
-        arrange(desc(n)) %>%
-        rename(games = n) %>%
-        flextable() %>%
-        autofit()
 
 ```
 
@@ -964,7 +931,7 @@ df = games_train %>%
                yearpublished,
                average, 
                bayesaverage,
-               log_usersrated,
+               usersrated,
                averageweight,
                minage,
                minplayers,
@@ -975,9 +942,9 @@ df = games_train %>%
         mutate(minplayers = log1p(minplayers),
                maxplayers = log1p(maxplayers),
                playingtime = log1p(playingtime),
-               minage = minage) %>%
+               minage = log1p(minage)) %>%
         gather("variable", "x",
-               -game_id, -name, -log_usersrated,
+               -game_id, -name, -usersrated,
                -averageweight, -bayesaverage, -average) %>%
         gather("outcome", "y",
                -game_id, -name, -variable, -x)
@@ -995,64 +962,13 @@ df %>%
         my_caption+
         stat_cor(p.accuracy = 0.01)+
         geom_smooth(se=F,
-                    span = 0.8,
                     method = 'loess',
                     formula = 'y ~ x')+
         my_caption
 
 rm(df)
+ 
 ```
-
-One thing I am particularly interested in is the relationship between the number of mechanics and game outcomes.
-
-```{r number of mechanics vs outcomes, fig.height=8, fig.width=10, warning=F, message=F}
-
-
-games_train %>%
-        select(game_id,
-               name,
-               average, 
-               bayesaverage,
-               averageweight,
-               log_usersrated) %>%
-        gather("outcome", "y",
-               -game_id, -name) %>%
-        left_join(.,
-                  games_train %>%
-                                  select(game_id,
-                       name,
-                       starts_with("mechanic_")) %>%
-                gather("variable", "value",
-                       -game_id, 
-                       -name) %>%
-                group_by(game_id,
-                         name) %>%
-                summarize(number_mechanics = sum(value,
-                                                 na.rm=T),
-                          .groups = 'drop'),
-                by = c("name", "game_id")) %>%
-    #    sample_n(10000) %>%
-        ggplot(., aes(x=number_mechanics,
-                      label = name,
-                      y = y))+
-        geom_jitter(alpha = 0.25) +
-        geom_text(size = 3,
-                  vjust = -1,
-                  check_overlap=T)+
-        facet_wrap(outcome ~.,
-                   ncol = 2,
-                   scales = "free_y")+
-        theme_bw(8)+
-        stat_cor(p.accuracy = 0.01)+
-        geom_smooth(se=F,
-                    span = 0.8,
-                    method = 'loess',
-                    formula = 'y ~ x')+
-        my_caption
-        
-
-```
-
 
 ### Correlation Plots
 
@@ -1069,7 +985,6 @@ df = games_train %>%
                -trading,
                -wanting,
                -wishing,
-             -usersrated,
             #   -usersrated,
              #  -bayesaverage,
                -stddev) %>%
@@ -1094,8 +1009,7 @@ corr_categories = cor(corr_df,
 
 # correlation plot
 ggcorrplot(corr_categories, hc.order = TRUE, outline.color = "white")+
-        theme(axis.text.x = element_text(angle=90,
-                                         size = 6))+
+        theme(axis.text.x = element_text(size = 6))+
         theme(axis.text.y = element_text(size = 6))
 
 ```
@@ -1104,9 +1018,11 @@ What about mechanics? Let's look at the correlation between mechanics and these 
 
 ```{r correlation between predictors and mechanics, fig.height=10, fig.width=10, fig.cap = "Correlation plot of game info and game mechanics"}
 
+
 corr_df = df %>%
         select(-one_of(zero_sd)) %>%
-        select(#-starts_with("mechanic"),
+        select(
+                #-starts_with("mechanic"),
                -starts_with("family"),
                -starts_with("category"),
                -starts_with("artist"),
@@ -1121,8 +1037,8 @@ corr_mechanics = cor(corr_df,
 
 # correlation plot
 ggcorrplot(corr_mechanics, hc.order = TRUE, outline.color = "white")+
-        theme(axis.text.x = element_text(angle =90, size = 6))+
-        theme(axis.text.y = element_text(size = 6))
+        theme(axis.text.x = element_text(size = 7))+
+        theme(axis.text.y = element_text(size = 7))
 
 ```
 
@@ -1143,7 +1059,6 @@ base_recipe = recipe(x = games_train) %>%
                          "playingtime"),
                        fn = ~ na_if(., 0)) %>% # these variables come through as 0 if they are missing
         update_role(one_of("timestamp",
-                           "yearpublished",
                       "dataset",
                       "game_id",
                       "name",
@@ -1157,8 +1072,6 @@ base_recipe = recipe(x = games_train) %>%
                       "average",
                       "bayesaverage",
                       "averageweight",
-                      "usersrated",
-                      "log_usersrated",
                       "usersrated",
                       "stddev"),
                       new_role = "id") %>%
@@ -1204,14 +1117,10 @@ base_recipe = recipe(x = games_train) %>%
                    freq_cut = 100/1) %>% 
         step_corr(all_predictors(),
                   threshold = 0.9) %>%
-        step_mutate(published_prior_1900 = case_when(yearpublished < 1900 ~ 1,
-                                                     TRUE ~ 0)) %>%
         step_mutate(published_prior_1950 = case_when(yearpublished < 1950 ~ 1,
                                                      TRUE ~ 0)) %>%
         step_mutate(trunc_yearpublished = case_when(yearpublished < 1950 ~ 1950,
                                               TRUE ~ yearpublished)) %>% # truncate
-        update_role("yearpublished",
-                    new_role = "id") %>%
         # step_mutate(cut_yearpublished= yearpublished) %>%
         # step_cut(cut_yearpublished,
         #                      breaks = seq(1970, 2010, 10),
@@ -1220,10 +1129,9 @@ base_recipe = recipe(x = games_train) %>%
         step_cut(cut_playingtime,
                              breaks = c(15, 45, 90, 180),
                              include_outside_range = T) %>%
-        update_role("playingtime",
-                    new_role = "id") %>%
         step_dummy(all_nominal_predictors()) %>%
-        step_log(time_per_player,
+        step_log(playingtime,
+                   time_per_player,
                    offset = 1) %>%
         step_dummy(all_nominal_predictors()) %>%
         step_zv(all_predictors()) %>% # remove features with no variance
@@ -1242,6 +1150,7 @@ base_recipe = recipe(x = games_train) %>%
 
 ```
 
+
 ```{r save the base recipe, eval=F}
 
 # save the base recipe
@@ -1249,6 +1158,7 @@ readr::write_rds(base_recipe,
                  here::here("models","repository",
                             paste("base_recipe",
                                   "_", Sys.Date(), ".Rdata", sep="")))
+
 
 ```
 
@@ -1263,13 +1173,11 @@ recipe_average = base_recipe %>%
         update_role(averageweight,
                     new_role = "predictor") %>%
         step_impute_linear(averageweight,
-                           impute_with = imp_vars(
-                                   all_numeric_predictors(),
-                                   -starts_with("publisher_"),
-                                   -starts_with("artist_"),
-                                   starts_with("designer_"),
-                                   )) 
-
+                     #      impute_with = imp_vars(all_predictors())) %>%
+                        impute_with = imp_vars(
+                                playingtime,
+                                time_per_player,
+                                number_mechanics))
 # bayesaverage
 recipe_bayesaverage = base_recipe %>%
         update_role(bayesaverage,
@@ -1277,28 +1185,24 @@ recipe_bayesaverage = base_recipe %>%
         update_role(averageweight,
                     new_role = "predictor") %>%
         step_impute_linear(averageweight,
-                           impute_with = imp_vars(
-                                   all_numeric_predictors(),
-                                   -starts_with("publisher_"),
-                                   -starts_with("artist_"),
-                                   starts_with("designer_"),
-                                   )) 
-
+                     #      impute_with = imp_vars(all_predictors())) %>%
+                        impute_with = imp_vars(
+                                playingtime,
+                                time_per_player,
+                                number_mechanics)) # model complexity via a simple linear model of playingtime and mechanics
 
 # usersrated
 recipe_usersrated = base_recipe %>%
-        update_role(log_usersrated,
+        update_role(usersrated,
                     new_role = "outcome") %>%
         update_role(averageweight,
                     new_role = "predictor") %>%
         step_impute_linear(averageweight,
-                           impute_with = imp_vars(
-                                   all_numeric_predictors(),
-                                   -starts_with("publisher_"),
-                                   -starts_with("artist_"),
-                                   starts_with("designer_"),
-                                   )) 
-
+                     #      impute_with = imp_vars(all_predictors())) %>%
+                        impute_with = imp_vars(
+                                playingtime,
+                                time_per_player,
+                                number_mechanics))
 
 ```
 
@@ -1309,26 +1213,13 @@ For modeling complexity (averageweight), we'll trim the dataset further, omittin
 recipe_averageweight = base_recipe %>%
         update_role(averageweight,
                     new_role = "outcome") %>%
-        step_filter(numweights > 10) %>%
-        step_mutate_at(starts_with("category_"),
-                           fn = ~ replace_na(., 0)) %>%
-        step_mutate_at(starts_with("mechanic_"),
-                           fn = ~ replace_na(., 0)) %>%
-        step_mutate_at(starts_with("artist_"),
-                           fn = ~ replace_na(., 0)) %>%
-        step_mutate_at(starts_with("designer_"),
-                           fn = ~ replace_na(., 0)) %>%
-        step_mutate_at(starts_with("publisher_"),
-                           fn = ~ replace_na(., 0)) %>%  
-        step_mutate_at(starts_with("family_"),
-                           fn = ~ replace_na(., 0)) %>%
-        step_zv(all_predictors()) 
+        step_filter(numweights > 10)
 
 ```
 
 ## Define Models and Workflows
 
-We'll use a few different methods in modeling our outcome. I'll mostly rely on penalized regression (glmnet) and xgboost (xgbTree), but I'll also explore using bayesian linear models with Stan as well as some simpler models (decision trees and k-nearest-neighbors).
+We'll use a few different methods in modeling our outcome. I'll mostly rely on penalized regression (glmnet) and xgboost (xgbTree), but I'll also explore using bayesian linear models with Stan.
 
 ```{r models for workflows, echo=T}
 
@@ -1373,196 +1264,141 @@ stan_reg_mod <-
              prior = prior_dist,   
              iter = 8000)
 
-# decision tree
-cart_reg_mod <- 
-   decision_tree(cost_complexity = tune(), min_n = tune()) %>% 
-   set_engine("rpart") %>% 
-   set_mode("regression")
-
-# knn
-knn_reg_mod <- 
-   nearest_neighbor(neighbors = tune(), weight_func = tune()) %>% 
-   set_engine("kknn") %>% 
-   set_mode("regression")
-
-```
-
-We can give each of the models the full set of preditors, but I'm interested to see how well we do using some simplified models as well that exclude sets of categorical features,
-
-```{r create workflow sets, echo=T}
-
-# average
-average_set <-
-        workflow_set(
-                preproc = list(
-                        normalize_all = recipe_average %>%
-                              step_normalize(all_predictors()),
-                        pca_all = recipe_average %>%
-                                step_normalize(all_predictors()) %>%
-                                step_pca(all_numeric_predictors()),
-                        normalize_no_artistdesigner = recipe_average %>%
-                                step_rm(starts_with("artist"),
-                                        starts_with("designer")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_publisher = recipe_average %>%
-                                step_rm(starts_with("publisher")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_categorical = recipe_average %>%
-                                update_role("playingtime",
-                                          new_role = "id") %>%
-                                step_rm(starts_with("publisher"),
-                                        starts_with("category"),
-                                        starts_with("mechanic"),
-                                        starts_with("artist"),
-                                        starts_with("designer"),
-                                        starts_with("family")) %>%
-                                step_normalize(all_predictors()),
-                        full = recipe_average
-                        ),
-                models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
-                              stan = stan_reg_mod,
-                              cart = cart_reg_mod,
-                              xgbTree = xgbTree_reg_mod),
-                cross = T
-        ) %>%
-       # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
-        filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
-        filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
-        filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
-
-
-# averageweight
-averageweight_set <-
-        workflow_set(
-                preproc = list(
-                        normalize_all = recipe_averageweight %>%
-                              step_normalize(all_predictors()),
-                        pca_all = recipe_averageweight %>%
-                                step_normalize(all_predictors()) %>%
-                                step_pca(all_numeric_predictors()),
-                        normalize_no_artistdesigner = recipe_averageweight %>%
-                                step_rm(starts_with("artist"),
-                                        starts_with("designer")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_publisher = recipe_averageweight %>%
-                                step_rm(starts_with("publisher")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_categorical = recipe_averageweight %>%
-                                update_role("playingtime",
-                                          new_role = "id") %>%
-                                step_rm(starts_with("publisher"),
-                                        starts_with("category"),
-                                        starts_with("mechanic"),
-                                        starts_with("artist"),
-                                        starts_with("designer"),
-                                        starts_with("family")) %>%
-                                step_normalize(all_predictors()),
-                        full = recipe_averageweight
-                        ),
-                models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
-                              stan = stan_reg_mod,
-                              cart = cart_reg_mod,
-                              xgbTree = xgbTree_reg_mod),
-                cross = T
-        ) %>%
-       # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
-        filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
-        filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
-        filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
-
-# usersrated
-usersrated_set <-
-        workflow_set(
-                preproc = list(
-                        normalize_all = recipe_usersrated %>%
-                              step_normalize(all_predictors()),
-                        pca_all = recipe_usersrated %>%
-                                step_normalize(all_predictors()) %>%
-                                step_pca(all_numeric_predictors()),
-                        normalize_no_artistdesigner = recipe_usersrated %>%
-                                step_rm(starts_with("artist"),
-                                        starts_with("designer")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_publisher = recipe_usersrated %>%
-                                step_rm(starts_with("publisher")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_categorical = recipe_usersrated %>%
-                                update_role("playingtime",
-                                          new_role = "id") %>%
-                                step_rm(starts_with("publisher"),
-                                        starts_with("category"),
-                                        starts_with("mechanic"),
-                                        starts_with("artist"),
-                                        starts_with("designer"),
-                                        starts_with("family")) %>%
-                                step_normalize(all_predictors()),
-                        full = recipe_usersrated
-                        ),
-                models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
-                              stan = stan_reg_mod,
-                              cart = cart_reg_mod,
-                              xgbTree = xgbTree_reg_mod),
-                cross = T
-        ) %>%
-       # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
-        filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
-        filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
-        filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
-
-
-# bayesaverage
-bayesaverage_set <-
-        workflow_set(
-                preproc = list(
-                        normalize_all = recipe_bayesaverage %>%
-                              step_normalize(all_predictors()),
-                        pca_all = recipe_bayesaverage %>%
-                                step_normalize(all_predictors()) %>%
-                                step_pca(all_numeric_predictors()),
-                        normalize_no_artistdesigner = recipe_bayesaverage %>%
-                                step_rm(starts_with("artist"),
-                                        starts_with("designer")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_publisher = recipe_bayesaverage %>%
-                                step_rm(starts_with("publisher")) %>%
-                                step_normalize(all_predictors()),
-                        normalize_no_categorical = recipe_bayesaverage %>%
-                                update_role("playingtime",
-                                          new_role = "id") %>%
-                                step_rm(starts_with("publisher"),
-                                        starts_with("category"),
-                                        starts_with("mechanic"),
-                                        starts_with("artist"),
-                                        starts_with("designer"),
-                                        starts_with("family")) %>%
-                                step_normalize(all_predictors()),
-                        full = recipe_bayesaverage
-                        ),
-                models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
-                              stan = stan_reg_mod,
-                              cart = cart_reg_mod,
-                              xgbTree = xgbTree_reg_mod),
-                cross = T
-        ) %>%
-       # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
-        filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
-        filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
-        filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
-
 
 ```
 
 We then create workflows for each model, for each outcome.
 
-```{r workflow settings, echo=T}
+```{r create workflows}
+
+### workflows for outcome 1
+### average
+# stan reg
+average_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_average %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+average_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_average %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+average_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_average)
+
+### workflows for outcome 2
+### bayesaverage
+# stan reg
+bayesaverage_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+bayesaverage_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+bayesaverage_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_bayesaverage)
+
+### workflows for outcome 3
+### bayesaverage
+# stan reg
+bayesaverage_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+bayesaverage_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_bayesaverage %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+bayesaverage_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_bayesaverage)
+
+### workflows for outcome 3
+### usersrated
+# stan reg
+usersrated_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_usersrated %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+usersrated_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_usersrated %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+usersrated_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_usersrated)
+
+### workflows for outcome 4
+### averageweight
+# stan reg
+averageweight_stan_lm_workflow = 
+        workflow() %>%
+        add_model(stan_reg_mod) %>%
+        add_recipe(recipe_averageweight %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+# glmnet
+averageweight_glmnet_workflow = 
+        workflow() %>%
+        add_model(glmnet_reg_mod) %>%
+        add_recipe(recipe_averageweight %>%
+                           update_role("playingtime",
+                                       new_role = "id") %>%
+                           step_normalize(all_predictors()))
+
+# xgbTree
+averageweight_xgbTree_workflow = 
+        workflow() %>%
+        add_model(xgbTree_reg_mod) %>%
+        add_recipe(recipe_averageweight)
+
+```
+
+```{r workflow settings}
 
 # specify regression metrics
 reg_metrics<-metric_set(yardstick::rmse,
@@ -1576,9 +1412,9 @@ keep_pred <- control_resamples(save_pred = TRUE,
 
 ```
 
-For the models that rely on tuning parameters (glmnet, cart, knn, and xgbTree) we'll define a cross validation split within the training set and tune across resamples.
+For the models that rely on tuning parameters (glmnet and xgbTree) we'll define a cross validation split within the training set and tune across resamples.
 
-```{r set up folds, echo=T}
+```{r set up folds}
 
 # create folds for training
 set.seed(2)
@@ -1590,455 +1426,261 @@ train_folds= vfold_cv(games_train,
 
 # Training Models
 
-We can now train our workflow sets.
+We'll then train models for each outcome.
 
-```{r train workflow sets, echo=T, eval=F}
+```{r tune models with tuning parameters, eval=F, echo=T} 
 
+### outcome 1
+## average
+# glmnet
 set.seed(1999)
-# train average
-average_tuned <- 
-        average_set %>% 
-        workflow_map("tune_grid", 
-                resamples = train_folds, 
-                grid =10,
-                control = keep_pred,
-                metrics = reg_metrics, 
-                verbose = TRUE)
+average_glmnet_tune = average_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
 
+# xgbTree
 set.seed(1999)
-# train averageweight
-averageweight_tuned <- 
-   averageweight_set %>% 
-   workflow_map("tune_grid", 
-                resamples = train_folds, 
-                grid =10,
-                control = keep_pred,
-                metrics = reg_metrics, 
-                verbose = TRUE)
+average_xgbTree_tune = average_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
 
+### outcome 2
+## bayesaverage
+# glmnet
 set.seed(1999)
-# train usersrated
-usersrated_tuned <- 
-   usersrated_set %>% 
-   workflow_map("tune_grid", 
-                resamples = train_folds, 
-                grid =10,
-                control = keep_pred,
-                metrics = reg_metrics, 
-                verbose = TRUE)
+bayesaverage_glmnet_tune = bayesaverage_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
 
+# xgbTree
 set.seed(1999)
-# train bayesaverage
-bayesaverage_tuned <- 
-   bayesaverage_set %>% 
-   workflow_map("tune_grid", 
-                resamples = train_folds, 
-                grid =10,
-                control = keep_pred,
-                metrics = reg_metrics, 
-                verbose = TRUE)
+bayesaverage_xgbTree_tune = bayesaverage_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+
+### outcome 3
+## usersrated
+# glmnet
+set.seed(1999)
+usersrated_glmnet_tune = usersrated_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+usersrated_xgbTree_tune = usersrated_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+### outcome 3
+## averageweight
+# glmnet
+set.seed(1999)
+averageweight_glmnet_tune = averageweight_glmnet_workflow %>%
+        tune_grid(train_folds,
+          grid = glmnet_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+# xgbTree
+set.seed(1999)
+averageweight_xgbTree_tune = averageweight_xgbTree_workflow %>%
+        tune_grid(train_folds,
+          grid = xgbTree_grid,
+          control = keep_pred,
+          metrics = reg_metrics)
+
+
+# gather tuning results
+tune_results = c(
+        mget(ls(pattern = "glmnet_tune")),
+        mget(ls(pattern = "xgbTree_tune"))
+        )
+
+# remove tuning results themselves
+rm(list=ls(pattern="xgbTree_tune"))
+rm(list =ls(pattern="glmnet_tune"))
 
 ```
 
-```{r save the tuned results so we can rerun this workflow without it taking forever}
 
-# # pull tuning results into one place
-# bgg_outcomes_tuning_results = mget(ls(pattern = "_tuned"))
+```{r save or load previously run tuning}
+
+# # save tuning results
+# readr::write_rds(tune_results,
+#                  file = here::here("models", "tune_results.Rds"))
+
+# load previously run tuning results
+tune_results = readr::read_rds(here::here("models", "tune_results.Rds"))
+
+```
+
+
+
+For the linear models with Stan, we don't need to tune any parameters, we'll just fit them on our training set.
+
+```{r fit with stan, echo=T, warning=F, message=F, eval=F}
+
+# register parallel
+all_cores <- parallel::detectCores(logical = FALSE-2)
+cl <- parallel::makePSOCKcluster(all_cores)
+doParallel::registerDoParallel(cl)
+
+### fit stan models by outcome
+# average
+average_stan_lm_fit = average_stan_lm_workflow %>%
+        fit(games_train)
+
+# bayesbayesaverage
+bayesaverage_stan_lm_fit = bayesaverage_stan_lm_workflow %>%
+        fit(games_train)
+
+# usersrated
+usersrated_stan_lm_fit = usersrated_stan_lm_workflow %>%
+        fit(games_train)
+
+# averageweight
+averageweight_stan_lm_fit = averageweight_stan_lm_workflow %>%
+        fit(games_train)
+
+# remove parallel backend
+registerDoSEQ()
+
+```
+
+```{r get and save stan objects, eval=F}
+
+# get stan_models into one object
+stan_lm_train_results = mget(ls(pattern = "stan_lm_fit"))
+
+# remove individual
+rm(list=ls(pattern="stan_lm_fit"))
+
+```
+
+
+```{r stan models, warning=F, message=F}
 # 
-# # save locally, ugh
-# readr::write_rds(bgg_outcomes_tuning_results, file = here::here("models", "tuning", "bgg_outcomes_tuning_results.Rds"))
+# # # save tuning results
+# readr::write_rds(stan_lm_train_results,
+#                  file = here::here("models", "stan_lm_train_results.Rds"))
 
-# laod from local
-bgg_outcomes_tuning_results = readr::read_rds(file = here::here("models", "tuning", "bgg_outcomes_tuning_results.Rds"))
+# load previously run tuning results
+stan_lm_train_results = readr::read_rds(here::here("models", "stan_lm_train_results.Rds"))
 
-```
+average_stan_lm_fit = stan_lm_train_results$average_stan_lm_fit
+bayesaverage_stan_lm_fit = stan_lm_train_results$bayesaverage_stan_lm_fit
+usersrated_stan_lm_fit = stan_lm_train_results$usersrated_stan_lm_fit
+averageweight_stan_lm_fit = stan_lm_train_results$averageweight_stan_lm_fit
 
-Training a variety of workflows lets us screen a number of models so that we can focus in on the best performing ones, and also learn something about the right parameters for models which rely on tuning parameters.
-
-For each model, we use the tuning parameters which performed well in resampling, then finalize the workflow.
-
-```{r set up validation fits}
-
-# get last fits
-bgg_outcomes_last_fits = map(
-        bgg_outcomes_tuning_results,
-        ~ .x %>%
-                mutate(best_tune = map(result,
-                               ~ select_best(.x, metric = "rmse"))) %>% 
-                mutate(last_fit = map2(.x = result,
-                               .y = best_tune,
-                              ~ .x %>% 
-                                      extract_workflow(.) %>%
-                                      finalize_workflow(., .y) %>%
-                                      last_fit(validation_split, 
-                                               metrics = reg_metrics))) %>%
-                select(wflow_id, best_tune, last_fit)) %>%
-        rbindlist(idcol = T)
-
- 
-# # average
-# average_last_fit = average_tuned %>%
-#         mutate(outcome = 'average') %>%
-# 
-# 
-# # averageweight
-# averageweight_last_fit = averageweight_tuned %>%
-#         mutate(outcome = 'averageweight') %>%
-#         mutate(best_tune = map(result,
-#                                ~ select_best(.x, metric = "rmse"))) %>% 
-#         mutate(last_fit = map2(.x = result,
-#                                .y = best_tune,
-#                               ~ .x %>% 
-#                                       extract_workflow(.) %>%
-#                                       finalize_workflow(., .y) %>%
-#                                       last_fit(validation_split, 
-#                                                metrics = reg_metrics))) %>%
-#         select(wflow_id, outcome, best_tune, last_fit)
-# 
-# # usersrated
-# usersrated_last_fit = usersrated_tuned %>%
-#         mutate(outcome = 'usersrated') %>%
-#         mutate(best_tune = map(result,
-#                                ~ select_best(.x, metric = "rmse"))) %>% 
-#         mutate(last_fit = map2(.x = result,
-#                                .y = best_tune,
-#                               ~ .x %>% 
-#                                       extract_workflow(.) %>%
-#                                       finalize_workflow(., .y) %>%
-#                                       last_fit(validation_split, 
-#                                                metrics = reg_metrics))) %>%
-#         select(wflow_id, outcome, best_tune, last_fit)
-# 
-# # bayesaverage
-# bayesaverage_last_fit = bayesaverage_tuned %>%
-#         mutate(outcome = 'bayesaverage') %>%
-#         mutate(best_tune = map(result,
-#                                ~ select_best(.x, metric = "rmse"))) %>% 
-#         mutate(last_fit = map2(.x = result,
-#                                .y = best_tune,
-#                               ~ .x %>% 
-#                                       extract_workflow(.) %>%
-#                                       finalize_workflow(., .y) %>%
-#                                       last_fit(validation_split, 
-#                                                metrics = reg_metrics))) %>%
-#         select(wflow_id, outcome, best_tune, last_fit)
+rm(stan_lm_train_results)
 
 ```
 
-## Model Performance (via Resampling)
+For models with tuning parameters, we'll refit on the training set using the tuning parameters which performed well in resampling.
 
-First, we can look at how the different workflows fared in resampling on the training set for each outcome. We'll look at the root mean squared error for each outcome and each model. We have a variety of different linear models in there, all with sightly different sets of features which we can compare more closely in a second, but the biggest takeawayfrom our first graph is that boosted trees performed the best across each outcome, with the linear models coming in second.
-
-```{r outcomes rmse by workflow}
-
-# combine all into one plot
-map(bgg_outcomes_tuning_results,
-    ~ .x %>%
-            rank_results(
-                   rank_metric = "rmse",
-                   select_best = T) %>%
-            filter(.metric == 'rmse')) %>%
-        rbindlist(idcol = T) %>%
-        as_tibble() %>%
-        mutate(outcome = gsub("_tuned", "", .id)) %>%
-        mutate(outcome = paste("outcome:", outcome)) %>%
-        mutate(.metric = paste("metric:", .metric)) %>%
-        ggplot(., aes(x=rank,
-                      label = wflow_id,
-                      color = model,
-                      y = mean,
-                      ymin = mean - 1.96*std_err,
-                      ymax = mean + 1.96*std_err)) +
-        facet_wrap(outcome~.metric,
-                   scales = "free",
-                   ncol = 2)+
-        geom_errorbar()+
-        geom_point()+
-        theme_bw(8)+
-        scale_color_colorblind()+
-        labs(title = "Model Performance by Method in Resampling (Training Set)")+
-        my_caption
-
-```
-
-We can rank each workflow based on its preprocessing recipe for each outcome. 
-
-```{r examine workflow ids}
-
-map(bgg_outcomes_tuning_results,
-    ~ .x %>%
-            rank_results(
-                   rank_metric = "rmse",
-                   select_best = T) %>%
-            filter(.metric == 'rmse')) %>%
-        rbindlist(idcol = T) %>%
-        as_tibble() %>%
-        mutate(outcome = gsub("_tuned", "", .id)) %>%
-        mutate(outcome = paste("outcome:", outcome)) %>%
-        mutate(wflow_id = gsub("normalize_", "", gsub("normalize_all", "full", wflow_id))) %>%
-        ggplot(., aes(x=reorder_within(wflow_id, rank, outcome),
-                      color = model,
-                      y = mean,
-                      ymin = mean - 1.96*std_err,
-                      ymax = mean + 1.96*std_err)) +
-        facet_wrap(outcome~.metric,
-                   scales = "free")+
-        geom_errorbar()+
-        geom_point()+
-        theme_bw(8)+
-        scale_color_colorblind()+
-        theme(axis.text.x = element_text(angle = 90,
-                                         hjust = 1))+
-        scale_x_reordered()+
-        labs(title = "Model Performance in Resampling by Workflow (Training Set)")+
-        xlab("workflow")+
-        theme(axis.text.x = element_text(size = 6))
+```{r finalize workflows, warning=F, message=F, echo=T}
 
 
-```
+### get tuning parameters
+# glmnet
+glmnet_best_pars =
+        lapply(tune_results[grep("glmnet", names(tune_results))],
+               show_best,
+               "rmse",
+               1)
+# xgbTree
+xgbTree_best_pars =
+        lapply(tune_results[grep("xgbTree", names(tune_results))],
+               show_best,
+               "rmse",
+               1)
 
-## Predictions (via Resampling)
+## finalize workflows
 
-We can also look at the predictions from each model to get a sense of what they're predicting. I'm particularly interested in how the different regularized linear tuned (glmnet) handled the data. To be clear, we used cross validation mainly to estimate the appropriate values for our tuning parameters rather than estimate their performance, but nonetheless we can take a look to see what games the models liked/disliked.
+### outcome 1
+## average
+# glmnet
+set.seed(1999)
+average_glmnet_last_fit= average_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$average_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
-### Average
+# xgbTree
+set.seed(1999)
+average_xgbTree_last_fit= average_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$average_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
-```{r get predictions from training for average, warning=F, message=F, fig.height=8, fig.width=10}
+### outcome 2
+## bayesaverage
+# glmnet
+set.seed(1999)
+bayesaverage_glmnet_last_fit= bayesaverage_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$bayesaverage_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
-# set.seed(5)
-# samp = games_train %>%
-#         sample_n(100) %>%
-#         pull(game_id)
+# xgbTree
+set.seed(1999)
+bayesaverage_xgbTree_last_fit= bayesaverage_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$bayesaverage_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
-# get predictions
-training_preds = map(bgg_outcomes_tuning_results,
-    ~ .x %>%
-            mutate(best_tune = map(result, ~ select_best(.x, metric = "rmse"))) %>%
-            mutate(preds = map2(.x = result,
-                            .y = best_tune,
-                            ~ .x %>% 
-                                   collect_predictions(parameters = .y))) %>%
-            select(wflow_id, best_tune, preds)) %>%
-        rbindlist(idcol = T) %>%
-        as_tibble() %>%
-        mutate(wflow_id = gsub("normalize_", "", gsub("normalize_all", "full", wflow_id))) %>%
-        unnest() %>%
-        select(.id, wflow_id, .pred, .row, average, averageweight, bayesaverage, log_usersrated) %>%
-        # mutate(variable = gsub("_tuned", "", .id)) %>%
-        # mutate(outcome = paste("outcome:", variable, sep="")) %>%
-        # filter(.config == .config1) %>%
-        # select(.id, wflow_id, .pred, .row, average, bayesaverage, log_usersrated, averageweight) %>%
-        gather("variable", "value",
-               -.id,
-               -wflow_id,
-               -.row,
-              # -outcome,
-               -.pred) %>%
-         filter(!is.na(value))
+### outcome 3
+## usersrated
+# glmnet
+set.seed(1999)
+usersrated_glmnet_last_fit= usersrated_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$usersrated_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
-# average plot
-training_preds %>%
-        filter(variable == 'average') %>%
-        mutate(outcome = paste("outcome:", variable, sep="")) %>%
-        left_join(.,
-                  games_train %>%
-                          mutate(.row = row_number()) %>%
-                          select(game_id, .row, name),
-                  by = c(".row")) %>%
-        ggplot(., aes(x=.pred,
-                      label = name,
-                      y=value))+
-        geom_text(check_overlap = T,
-                  vjust = -1,
-                  size=2.5)+
-        geom_point(alpha = 0.15)+
-        facet_wrap(outcome ~ wflow_id,
-                   ncol = 2)+
-        theme_bw(8)+
-        geom_abline(slope =1,
-                    intercept = 0,
-                    linetype = 'dotted')+
-        stat_cor(p.accuracy = 0.01,
-                 col = 'blue')+
-        labs(title = "Model Predictions from Resampling (Training Set)")+
-        my_caption
-        
-```
+# xgbTree
+set.seed(1999)
+usersrated_xgbTree_last_fit= usersrated_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$usersrated_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
-### UsersRated
+### outcome 4
+## averageweight
+# glmnet
+set.seed(1999)
+averageweight_glmnet_last_fit= averageweight_glmnet_workflow %>%
+        finalize_workflow(glmnet_best_pars$averageweight_glmnet_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
-```{r get predictions from training for usersrated, warning=F, message=F, fig.height=8, fig.width=10}
-
-# average plot
-training_preds %>%
-        filter(variable == 'log_usersrated') %>%
-        mutate(outcome = paste("outcome:", variable, sep="")) %>%
-        left_join(.,
-                  games_train %>%
-                          mutate(.row = row_number()) %>%
-                          select(game_id, .row, name),
-                  by = c(".row")) %>%
-        mutate(.pred = exp(.pred)) %>%
-        mutate(value = exp(value)) %>%
-        ggplot(., aes(x=.pred,
-                      label = name,
-                      y=value))+
-        scale_x_log10()+
-        scale_y_log10()+
-        geom_text(check_overlap = T,
-                  vjust = -1,
-                  size=2.5)+
-        geom_point(alpha = 0.15)+
-        facet_wrap(outcome ~ wflow_id,
-                   ncol = 2)+
-        theme_bw(8)+
-        geom_abline(slope =1,
-                    intercept = 0,
-                    linetype = 'dotted')+
-        stat_cor(p.accuracy = 0.01,
-                 col = 'blue')+
-        labs(title = "Model Predictions from Resampling (Training Set)")+
-        my_caption
-
+# xgbTree
+set.seed(1999)
+averageweight_xgbTree_last_fit= averageweight_xgbTree_workflow %>%
+        finalize_workflow(xgbTree_best_pars$averageweight_xgbTree_tune) %>%
+        last_fit(validation_split, metrics = reg_metrics)
 
 ```
 
-### UsersRated
 
-```{r get predictions from training for usersrated, warning=F, message=F, fig.height=8, fig.width=10}
+## Training Results
 
-# average plot
-training_preds %>%
-        filter(variable == 'averageweight') %>%
-        mutate(outcome = paste("outcome:", variable, sep="")) %>%
-        left_join(.,
-                  games_train %>%
-                          mutate(.row = row_number()) %>%
-                          select(game_id, .row, name),
-                  by = c(".row")) %>%
-        ggplot(., aes(x=.pred,
-                      label = name,
-                      y=value))+
-        geom_text(check_overlap = T,
-                  vjust = -1,
-                  size=2.5)+
-        geom_point(alpha = 0.15)+
-        facet_wrap(outcome ~ wflow_id,
-                   ncol = 2)+
-        theme_bw(8)+
-        geom_abline(slope =1,
-                    intercept = 0,
-                    linetype = 'dotted')+
-        stat_cor(p.accuracy = 0.01,
-                 col = 'blue')+
-        labs(title = "Model Predictions from Resampling (Training Set)")+
-        my_caption
-
-
-```
-
-What games did the models tend to like for the highest average?
-
-```{r look at highest average rating from training resampling, fig.height=8, fig.width=10}
-
-# average plot
-temp = training_preds %>%
-        filter(variable == 'average') %>%
-        left_join(.,
-                  games_train %>%
-                          mutate(.row = row_number()) %>%
-                          select(game_id, .row, name),
-                  by = c(".row")) %>%
-        spread(variable, value)
-
-temp %>%
-        ggplot(., aes(y=reorder(name, .pred),
-                      color = wflow_id))+
-        geom_point(aes(x=.pred))+
-        theme_phil()+
-        scale_color_colorblind()
-        
-```
-
-
-
-
-What games did the models tend to like for the highest average?
-
-```{r look at highest average rating from training resampling, fig.height=20, fig.width=10}
-
-# average plot
-temp = training_preds %>%
-        filter(variable == 'average') %>%
-        left_join(.,
-                  games_train %>%
-                          mutate(.row = row_number()) %>%
-                          select(game_id, .row, name),
-                  by = c(".row")) %>%
-        spread(variable, value) %>%
-        spread(wflow_id, .pred) %>%
-        sample_n(200) 
-        # slice_max(order_by = average,
-        #           n=200,
-        #           with_ties = F)
-
-library(plotly)
-
-plot = ggplotly(
-        temp %>%
-        gather("wflow_id", 
-               ".pred",
-               -.id,
-               -.row,
-               -name,
-               -game_id,
-               -average) %>%
-        ggplot(., aes(y=reorder(name, .pred),
-                      color = wflow_id))+
-        geom_point(aes(x=.pred),
-                   shape = 1)+
-        geom_point(data = temp %>%
-                           rename(.pred = average),
-                   aes(x=.pred),
-                   size=2,
-                   color = "black")+
-      #  geom_point(aes(x=.pred ))
-        theme_phil()+
-        scale_color_colorblind(),
-      layout = plotly::layout(yaxis = list(rangeslider = list()))
-)
-
-plot
-        
-```
-
-
-
-## Inference 
-
-We can dig into each model to get a better idea of what they learned.
+Before we go to the validation set, we can take a look at the models from training, where we tuned the penalized linear models and gradient boosted trees and fit linear models with stan. 
 
 ### glmnet
 
-For the penalized linear tuned (elastic net regularization), our lone tuning parameter is the *penalty*, or the amount of regularization used by the model. Looking at the results from resampling (examining RMSE for each fold), we achieved the best results with only a slight amount of regularization.
+For the penalized linear models (elastic net regularization), our lone tuning parameter is the *penalty*, or the amount of regularization used by the model. Looking at the results from resampling (examining RMSE for each fold), we achieved the best results with only a slight amount of regularization.
 
 ```{r get tuning results for glmnet, echo=T}
 
 # collect metrics by fold from glmnet
-all_tuned = bind_rows(average_tuned %>%
-                               mutate(outcome = "average"),
-                       averageweight_tuned %>%
-                               mutate(outcome = "averageweight"),
-                       usersrated_tuned %>%
-                               mutate(outcome = "usersrated"),
-                       bayesaverage_tuned %>%
-                               mutate(outcome = "bayesaverage")
-                       ) %>%
-        filter(grepl("glmnet", wflow_id)) %>%
-        mutate(metrics = map(result, 
-                             .x %>% collect_metrics(summarize = F)))
-
-
 lapply(tune_results[grep("glmnet", names(tune_results))], collect_metrics, summarize=F) %>% # get tuning results 
         rbindlist(., idcol =T) %>% # combine into dataframe
         filter(.metric == 'rmse') %>% 
@@ -2057,7 +1699,9 @@ lapply(tune_results[grep("glmnet", names(tune_results))], collect_metrics, summa
         
 ```
 
-We can also look at the features which had the largest partial effects by examining the absolute value of the coefficients (as we standardized our predictors during preprocessing). We'll filter to the 40 features with the largest partial effects in each model.
+We used cross validation to estimate the appropriate values for this tuning parameter, but we can also look at the predictions from resampling to get a sense of how the model performed in predicting each outcome.
+
+We'll principally use the validation set to estimate performance on data not yet not seen by the model, as using cross validation for both tuning and model assessment at the same time tends to lead to overly optimistic estimates of model performance. Still, we can open up the predictions and and take a look.
 
 ```{r look at predictions from resampling for glmnet, fig.height=8, fig.width=10, echo=T}
 
@@ -2104,7 +1748,7 @@ lapply(tune_results[grep("glmnet", names(tune_results))],collect_predictions) %>
 
 ```
 
-
+We can also look at the features which had the largest partial effects by examining the absolute value of the coefficients (as we standardized our predictors during preprocessing). We'll filter to the 40 features with the largest partial effects in each model.
 
 ```{r get glmnet fits, fig.height=8, fig.width=8}
 

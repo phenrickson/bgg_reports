@@ -8,12 +8,41 @@ library(XML)
 library(rvest)
 library(purrr)
 
-# get todays data
-bgg_today<-get_bgg_data_from_github(Sys.Date())
+## using ids only via github, which only includes games that are at 30 ratings
+# # get todays data
+# bgg_today<-get_bgg_data_from_github(Sys.Date())
+# 
+# # get ids
+# bgg_ids = bgg_today %>%
+#         select(game_id) %>% 
+#         pull() %>%
+#         unique()
 
-# get ids
-bgg_ids = bgg_today %>%
-        select(game_id) %>% 
+
+## using ids pulled directly from bgg
+library(bigrquery)
+library(DBI)
+bq_auth(email = 'phil.henrickson@aebs.com')
+
+# get project credentials
+PROJECT_ID <- "gcp-analytics-326219"
+BUCKET_NAME <- "test-bucket"
+
+# establish connection
+bigquerycon<-dbConnect(
+        bigrquery::bigquery(),
+        project = PROJECT_ID,
+        dataset = "bgg"
+)
+
+# query table with all ids
+all_game_ids<-DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_all_game_ids
+                              where date = (SELECT MAX(date) as most_recent FROM bgg.api_all_game_ids)')
+
+# filter down to just ids
+bgg_ids = all_game_ids %>%
+        select(game_id) %>%
         pull() %>%
         unique()
 
@@ -95,6 +124,44 @@ check_again = data.frame(length = lengths(batches_returned),
 # assert that we have the right length for all batches
 assertthat::are_equal(length(batches_returned),
                       check_again)
+
+# get last problem batch
+# batches with prpblems
+problems_again = data.frame(length = lengths(batches_returned),
+                            batch = seq(batches_returned)) %>%
+        filter(length !=9) %>%
+        pull(batch)
+
+# rerun problem batches
+batches_problems_again = foreach(b = 1:length(problems_again),
+                           .errorhandling = 'pass') %do% {
+                                   
+                                   # push batch 
+                                   out = get_bgg_api_data(batches[[problems_again[b]]][-120])
+                                   
+                                   # pause to avoid taxing the API
+                                   Sys.sleep(20)
+                                   
+                                   # print
+                                   #  print(paste("batch", b, "of", length(batches), "complete"))
+                                   cat(paste("batch", b, "of", length(problems_again), "complete"), sep="\n")
+                                   
+                                   # return
+                                   out
+                                   
+                           }
+
+# check again, again
+for (i in 1:length(problems_again)) {
+        batches_returned[[problems_again[i]]] = batches_problems_again[[i]]
+}
+
+# assert that we have the right length for all batches
+assertthat::are_equal(length(batches_returned),
+                      data.frame(length = lengths(batches_returned),
+                                batch = seq(batches_returned)) %>%
+                              filter(length ==9) %>%
+                              nrow())
 
 # pulling from API done
 print(paste("saving to local"))

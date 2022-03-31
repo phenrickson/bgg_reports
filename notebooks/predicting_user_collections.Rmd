@@ -331,6 +331,7 @@ user_recipe = recipe(games_train) %>%
                                                      TRUE ~ 0)) %>%
         step_mutate(trunc_yearpublished = case_when(yearpublished < 1950 ~ 1950,
                                               TRUE ~ yearpublished)) %>% # truncate
+        update_role("yearpublished", new_role = "id") %>%
         # step_mutate(cut_yearpublished= yearpublished) %>%
         # step_cut(cut_yearpublished,
         #                      breaks = seq(1970, 2010, 10),

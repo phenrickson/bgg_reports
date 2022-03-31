@@ -133,27 +133,50 @@ usersrated_stan_workflow = usersrated_stan_workflow$usersrated_stan_final_fit
 
 ```{r get games from bgg}
 
-# get games from today
-bgg_today = get_bgg_data_from_github(Sys.Date())
+game_ids = readr::read_rds(here::here("data", "all_game_ids_tidied.Rdata"))
 
-set.seed(5)
-ids = bgg_today %>%
-        filter(game_release_year== 2021 | game_release_year == 2022) %>%
-        pull(game_id) 
+ids = game_ids %>%
+        filter(yearpublished %in% c(seq(2021, 2023, 1))) %>%
+        pull(game_id)
+
+# # get games from today
+# bgg_today = get_bgg_data_from_github(Sys.Date())
+# 
+# set.seed(5)
+# ids = bgg_today %>%
+#         filter(game_release_year== 2021 | game_release_year == 2022) %>%
+#         pull(game_id) 
 
 ```
 
 ```{r push through api, warning=F, message=F}
 
-# push through api
-api_returned = get_bgg_api_data(ids)
+# make batches
+n = 800
+batches = split(ids, ceiling(seq_along(ids)/n))
 
-# convert to tabular
-api_tables = convert_bgg_api_data_to_tables(api_returned)
+# push through api
+api_tables = foreach(i = 1:length(batches), 
+        .combine = bind_rows,
+        .errorhandling = 'pass') %do% {
+                
+                # push ids through API
+                api_returned = get_bgg_api_data(batches[i][[1]])
+                
+                # convert to tabular
+                api_converted = convert_bgg_api_data_to_tables(api_returned)
+
+                # progress
+                cat(paste("batch", i, "of", length(batches), "complete"), sep="\n")
+                
+                # output the tablew e need
+                api_converted$game_info
+
+        }
 
 # convert to format for model
 suppressMessages({
-api_games_info = api_tables$game_info %>%
+api_games_info = api_tables%>%
         bind_rows(., base_recipe$template[0,]) %>% # bind to our template format
         select(one_of(names(base_recipe$template))) # keep only variables in that format
 })
@@ -165,8 +188,254 @@ api_games_info = api_tables$game_info %>%
 # point estimates
 source(here::here("functions", "predict_bgg_outcomes_func.R"))
 
+# estimate averageweight
+estimated_averageweight = averageweight_workflow %>%
+        predict(api_games_info) %>%
+        mutate(outcome = "averageweight") %>%
+        mutate(.row = row_number()) %>%
+        select(outcome, .pred, .row) %>%
+        left_join(., api_games_info %>%
+                          mutate(.row = row_number()) %>%
+                          select(game_id, .row),
+                  by = c('.row'))
+
+# now amend games info with estimate of averageweight
+input_games_estimated_averageweight  = estimated_averageweight %>%
+        left_join(., api_games_info,
+                  by = c("game_id")) %>%
+        select(-averageweight, -.row, -outcome) %>%
+        rename(averageweight = .pred) %>%
+        mutate(averageweight = case_when(averageweight > 5 ~ 5,
+                                         averageweight < 1 ~ 1,
+                                         TRUE ~ averageweight))
+
+# estimated bgg average given estimated averageweight
+estimated_average= average_workflow %>%
+       # predict(input_games_info) %>%
+        predict(input_games_estimated_averageweight) %>%
+        mutate(.row = row_number()) %>%
+        mutate(outcome = "average") %>%
+        select(outcome, .pred, .row) %>%
+        left_join(., api_games_info %>%
+                          mutate(.row = row_number()) %>%
+                          select(game_id, .row),
+                  by = c('.row'))
+
+# estimate usersrated given estimated averageweight
+estimated_usersrated = usersrated_workflow %>%
+    #    predict(input_games_info) %>%
+        predict(input_games_estimated_averageweight) %>%
+        mutate(.row = row_number()) %>%
+        mutate(outcome = "usersrated") %>%
+        select(outcome, .pred, .row) %>%
+        left_join(., api_games_info %>%
+                          mutate(.row = row_number()) %>%
+                          select(game_id, .row),
+                  by = c('.row'))
+
+# combine
+estimated_outcomes_xgbTree = estimated_usersrated %>%
+        spread(outcome, .pred) %>%
+        left_join(.,
+                  estimated_average %>%
+                          spread(outcome, .pred),
+                  by = c(".row", "game_id")) %>%
+        mutate(usersrated = plyr::round_any(exp(usersrated), 50)) %>%
+        mutate(bayesaverage = 
+                       ((1000*5.5) + (usersrated*average)) /
+                       (1000 + usersrated)) %>%
+        left_join(., api_games_info %>%
+                          mutate(.row = row_number()) %>%
+                          select(game_id, .row),
+                  by = c('.row', 'game_id')) %>%
+        left_join(., estimated_averageweight %>%
+                          spread(outcome, .pred),
+                  by = c(".row", "game_id")) %>%
+        mutate(method = "xgbTree") %>%
+        select(method, everything()) %>%
+        select(method, .row, game_id, average, usersrated, bayesaverage, averageweight)
+
+# look
+estimated_outcomes_xgbTree %>%
+        left_join(., api_games_info %>%
+                          select(name, yearpublished, game_id),
+                  by = c("game_id")) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        arrange(desc(bayesaverage)) %>%
+        select(method, .row, yearpublished, game_id, name, average, usersrated, bayesaverage, averageweight) %>%
+        mutate(rank = row_number()) 
+
+estimated_outcomes_stan = usersrated_stan_workflow %>%
+                #predict(input_games_info) %>% 
+        predict(input_games_estimated_averageweight) %>%
+                mutate(.row = row_number()) %>%
+                mutate(outcome = "usersrated") %>%
+                select(outcome, .pred, .row) %>%
+                spread(outcome, .pred) %>%
+                left_join(., 
+                          average_stan_workflow %>%
+                          #        predict(input_games_estimated_averageweight) %>%
+                          #        predict(input_games_estimated_averageweight) %>%
+                                  mutate(.row = row_number()) %>%
+                                  mutate(outcome = "average") %>%
+                                  select(outcome, .pred, .row) %>%
+                                  spread(outcome, .pred),
+                          by = c(".row")) %>%
+                mutate(usersrated = plyr::round_any(exp(usersrated), 50)) %>%
+                mutate(bayesaverage = 
+                               ((1000*5.5) + (usersrated*average)) /
+                               (1000 + usersrated)) %>%
+                left_join(., api_games_info %>%
+                                  mutate(.row = row_number()) %>%
+                                  select(game_id, .row),
+                          by = c('.row')) %>%
+                left_join(., estimated_averageweight %>%
+                                  spread(outcome, .pred),
+                          by = c(".row", "game_id")) %>%
+                mutate(method = "stan_lm") %>%
+                select(method, .row, game_id, average, usersrated, bayesaverage, averageweight)
+        
+
+
 # get estimates
 preds = predict_bgg_outcomes_func(api_games_info)
+
+```
+
+
+```{r posterior predict, warning=F, fig.height=20}
+
+# function for getting percentiles
+p <- c(0.05, .1, .2, 0.5, 0.8, .9, .95)
+p_names <- map_chr(p, ~paste0("perc_", .x*100))
+p_funs <- map(p, ~ purrr::partial(quantile, probs = .x, na.rm = TRUE)) %>% 
+        purrr::set_names(nm = p_names)
+
+
+library(tidybayes)
+
+sims_stan = 
+        average_stan_workflow %>%
+        extract_fit_engine() %>%
+        posterior_predict(.,
+                          newdata = average_stan_workflow %>%
+                                  extract_recipe() %>% 
+                                  bake(input_games_estimated_averageweight),
+                                              draws = 1000) %>%
+        tidy_draws() %>%
+        gather(".row", "average",
+               -.chain, -.iteration, -.draw) %>%
+        bind_cols(.,
+                  usersrated_stan_workflow %>%
+                          extract_fit_engine() %>%
+                          posterior_predict(.,
+                                            newdata = usersrated_stan_workflow %>%
+                                                    extract_recipe() %>% 
+                                                    bake(input_games_estimated_averageweight),
+                                            draws = 1000) %>%
+                          tidy_draws() %>%
+                          gather(".row", "usersrated",
+                                 -.chain, -.iteration, -.draw) %>%
+                          select(usersrated)) %>%
+        mutate(usersrated = plyr::round_any(exp(usersrated), 50)) %>%
+        mutate(bayesaverage = (
+                ((1000*5.5) + (usersrated*average)) /
+                        (1000 + usersrated)))
+
+sims_stan %>%
+        group_by(.row) %>%
+        summarize_at(vars(bayesaverage), funs(!!!p_funs)) %>%
+        mutate(.row = as.integer(.row)) %>%
+        left_join(., api_games_info %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, bayesaverage, yearpublished),
+                  by = ".row") %>%
+        left_join(., estimated_outcomes_xgbTree %>%
+                          select(.row, game_id, bayesaverage, method) %>%
+                          spread(method, bayesaverage),
+                  by = c(".row", "game_id")) %>%
+        filter(yearpublished == 2021) %>%
+        mutate(bayesaverage = case_when(bayesaverage == 0 ~ NA_real_,
+               TRUE ~ bayesaverage)) %>%
+        arrange(desc(perc_50)) %>%
+        head(200) %>%
+  #      filter(name == 'Ark Nova') %>%
+   #     sample_n(250) %>%
+        ggplot(., aes(y=reorder(name, perc_50),
+                      x=perc_50,
+                      xmin = perc_5,
+                      xmax = perc_95))+
+        geom_pointinterval(color = 'deepskyblue1')+
+        geom_point(aes(x = bayesaverage),
+                   shape = 1,
+                   color = 'black')+
+        geom_point(aes(x=xgbTree),
+                       color = 'navy')+
+        theme_bw(8)+
+        ylab("game")+
+        xlab("bayesaverage")+
+        coord_cartesian(xlim = c(4.5, 9.5))
+                #predict(input_games_info) %>% 
+
+
+
+```
+
+What if the only uncertainty we allow is through the users rated?
+
+```{r fig.height = 10}
+
+sims_usersrated = usersrated_stan_workflow %>%
+                          extract_fit_engine() %>%
+                          posterior_predict(.,
+                                            newdata = usersrated_stan_workflow %>%
+                                                    extract_recipe() %>% 
+                                                    bake(input_games_estimated_averageweight),
+                                            draws = 1000) %>%
+                          tidy_draws() %>%
+                          gather(".row", "usersrated",
+                                 -.chain, -.iteration, -.draw) %>%
+        mutate(.row = as.integer(.row)) %>%
+        left_join(., 
+                  estimated_average %>%
+                          select(.row, game_id, .pred, outcome) %>%
+                          spread(outcome, .pred),
+                  by = c(".row")) %>%
+        mutate(usersrated = plyr::round_any(exp(usersrated), 50)) %>%
+        mutate(bayesaverage = (
+                ((1000*5.5) + (usersrated*average)) /
+                        (1000 + usersrated)))
+
+sims_usersrated %>%
+        group_by(.row) %>%
+        summarize_at(vars(bayesaverage), funs(!!!p_funs)) %>%
+        mutate(.row = as.integer(.row)) %>%
+        left_join(., api_games_info %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, bayesaverage, yearpublished),
+                  by = ".row") %>%
+        filter(yearpublished == 2021) %>%
+        mutate(bayesaverage = case_when(bayesaverage == 0 ~ NA_real_,
+               TRUE ~ bayesaverage)) %>%
+        arrange(desc(perc_50)) %>%
+        head(200) %>%
+  #      filter(name == 'Ark Nova') %>%
+   #     sample_n(250) %>%
+        ggplot(., aes(y=reorder(name, perc_50),
+                      x=perc_50,
+                      xmin = perc_5,
+                      xmax = perc_95))+
+        geom_pointinterval(color = 'deepskyblue1')+
+        geom_point(aes(x = bayesaverage),
+                   shape = 1,
+                   color = 'black')+
+        theme_bw(8)+
+        ylab("game")+
+        xlab("bayesaverage")+
+        coord_cartesian(xlim = c(4.5, 9.5))
+                
+
+
 
 ```
 
@@ -178,7 +447,7 @@ Here are the model's predictions for uppcoming games for expected user ratings, 
 ```{r interactive table for predictions}
 
 # boosted trees
-preds$estimated_outcomes_xgbTree %>%
+estimated_outcomes_xgbTree %>%
         select(-.row) %>%
         left_join(., api_games_info %>%
                           select(game_id, name, yearpublished), 
@@ -212,7 +481,7 @@ What games are expected to be the most popular? In this section, I display the m
 ```{r display preds for geek rating 100}
 
 # boosted trees
-preds$estimated_outcomes_xgbTree %>%
+estimated_outcomes_xgbTree %>%
         select(-.row) %>%
         left_join(., api_games_info %>%
                           select(game_id, name, yearpublished), 
@@ -415,7 +684,7 @@ In this section, I show games sorted by their expected **average** rating, filte
 ```{r fantasy average top 50}
 
 # boosted trees
-preds$estimated_outcomes_xgbTree %>%
+estimated_outcomes_xgbTree %>%
         select(-.row) %>%
         filter(game_id %in% (api_games_info %>% filter(category_fantasy==1) %>% pull(game_id))) %>%
         left_join(., api_games_info %>%
@@ -486,7 +755,7 @@ preds$estimated_outcomes_xgbTree %>%
 ```{r Economic average top 50}
 
 # boosted trees
-preds$estimated_outcomes_xgbTree %>%
+estimated_outcomes_xgbTree %>%
         select(-.row) %>%
         filter(game_id %in% (api_games_info %>% 
                                      filter(category_economic==1) %>% pull(game_id))) %>%
@@ -552,10 +821,11 @@ preds$estimated_outcomes_xgbTree %>%
 
 
 ## Wargame
+
 ```{r Wargame average top 50}
 
 # boosted trees
-preds$estimated_outcomes_xgbTree %>%
+estimated_outcomes_xgbTree %>%
         select(-.row) %>%
         filter(game_id %in% (api_games_info %>% 
                                      filter(category_wargame==1) %>% pull(game_id))) %>%
@@ -623,7 +893,7 @@ preds$estimated_outcomes_xgbTree %>%
 ```{r Science Fiction average top 50}
 
 # boosted trees
-preds$estimated_outcomes_xgbTree %>%
+estimated_outcomes_xgbTree %>%
         select(-.row) %>%
         filter(game_id %in% (api_games_info %>% filter(category_science_fiction==1) %>% pull(game_id))) %>%
         left_join(., api_games_info %>%

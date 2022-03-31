@@ -10,7 +10,7 @@ tidy_name_func <-
                 x<-gsub("category_miniatures", "category_miniatures_game", x)
                 x<-gsub("family_components_miniatures", "has_miniatures", x)
                 x<-gsub("mechanic_realtime", "mechanic_realtime_mechanicanic", x)
-                x<-gsub("mechanic_memory", "mechanic_memory_mechanicanic", x)
+                x<-gsub("mechanic_memory", "mechanic_memory_mechanic", x)
                 x<-gsub("family_components_miniatures", "has_miniatures", x)
                 x<-gsub("designer_uncredited", "uncredited_designer", x)
                 x<-gsub("trunc_", "", x)
@@ -53,7 +53,6 @@ tidy_name_func <-
                 x = gsub("3d", "3D", x)
                 x = gsub("Usa", "USA", x)
                 x = gsub("Averageweight", "Average Weight", x)
-                x =
                 x
                 
         }
