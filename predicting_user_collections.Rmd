@@ -1,0 +1,1908 @@
+---
+title: "Analyzing Individual BGG Users"
+output: 
+  html_document:
+    toc: TRUE #adds a Table of Contents
+    number_sections: TRUE #number your headings/sections
+    toc_float: TRUE #let your ToC follow you as you scroll
+    keep_md: no
+    fig.caption: yes
+params:
+  username: "Watch%20It%20Played"
+  end_training_year: 2020
+  min_training_ratings: 30
+---
+
+```{r load and set packages, echo=F, warning=F, message=F,  results = 'hide'}
+
+knitr::opts_chunk$set(echo = F,
+                      error = F,
+                      warning=F,
+                      dev="png",
+                      fig.width = 10,
+                      fig.height = 6)
+
+options(knitr.duplicate.label = "allow")
+
+options(scipen=999)
+
+# source
+source(here::here("scripts/load_packages.R"))
+source(here::here("functions/theme_phil.R"))
+library(patchwork)
+
+set_flextable_defaults(theme_fun = theme_booktabs,
+                       font.color = "black",
+  padding.bottom = 6, 
+  padding.top = 6,
+  padding.left = 6,
+  padding.right = 6,
+  background.color = "white")
+
+```
+
+```{r connect to big query and query tables we need, warning=F, message=F, results='hide'}
+
+library(bigrquery)
+
+# get project credentials
+PROJECT_ID <- "gcp-analytics-326219"
+BUCKET_NAME <- "test-bucket"
+
+# authorize
+bq_auth(email = "phil.henrickson@aebs.com")
+
+# establish connection
+bigquerycon<-dbConnect(
+        bigrquery::bigquery(),
+        project = PROJECT_ID,
+        dataset = "bgg"
+)
+
+# query table of game info to most recent load
+active_games<-DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_game_info
+                              where timestamp = (SELECT MAX(timestamp) as most_recent FROM bgg.api_game_info)') %>%
+        select(-starts_with("rank")) %>%
+        mutate(numweights = as.numeric(numweights)) %>%
+        mutate_at(c("averageweight",
+                    "playingtime",
+                    "minplaytime",
+                    "maxplaytime",
+                    "yearpublished"),
+                  ~ case_when(. == 0 ~ NA_real_,
+                              TRUE ~ .))
+
+# ugh, made a mistake in the schema...
+
+# create caption for plots
+my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
+                        paste("Data and analysis at github.com/phenrickson/bgg"), sep="\n")))
+
+
+# long table with game type variables
+game_types= DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_game_categories')
+
+```
+
+```{r functions}
+
+# source
+source(here::here("functions/tidy_name_func.R"))
+source(here::here("functions/get_bgg_data_from_github.R"))
+
+# get user collection
+get_user_collection = function(username) {
+        
+        # load bgg analytics
+        library(bggAnalytics)
+        
+        # load function for grabbing collections
+        source(here::here("functions/get_collection.R"))
+        
+        # load collection
+        get_collection(username) %>%
+                        as_tibble()
+        
+}
+
+# function for adding color to flextables
+col_func<- function(x) {
+  
+  breaks<-seq(0, 1, .01)
+  
+#  breaks = weight_deciles
+  colorRamp=colorRampPalette(c("white", "deepskyblue1"))
+  col_palette <- colorRamp(length(breaks))
+  mycut <- cut(x, 
+    breaks = breaks,
+    include.lowest = TRUE, 
+    right=T,
+    label = FALSE)
+  col_palette[mycut]
+  
+}
+
+```
+
+```{r tidy the damn username}
+
+tidy_username =  gsub("\\%20", "", params$username)
+tidy_username = case_when(tidy_username == 'mrbananagrabber' ~ 'Phil', TRUE ~ tidy_username)
+username = tidy_username
+
+```
+
+
+# What is this? {-}
+
+This notebook contains a set of analyses for analyzing **`r tidy_username`'s** boardgamegeek collection. The bulk of the analysis is focused on building a user-specific predictive model to predict the games that the specified user is likely to own. This enables us to ask questions like, based on the games the user currently owns, what games are a good fit for their collection? What upcoming games are they likely to purchase?
+
+```{r load previously stored data and create games model, warning=F, mesage=F, echo=F}
+
+# laod in categorical feature selection we've made use of previously
+categorical_features_selected = readr::read_rds(here::here("data",
+                                                            "categorical_features_selected.Rdata"))
+
+# select in full game types set
+game_types_selected = game_types %>%
+        left_join(., categorical_features_selected %>%
+                          select(type, id, value, tidied, selected),
+                  by = c("type", "id", "value")) %>%
+        filter(selected == 'yes')
+
+# pivot and spread these out
+game_types_pivoted =game_types_selected %>%
+        select(game_id, type, value) %>%
+        mutate(type_abbrev = substr(type, 1, 3)) %>%
+        mutate(value = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(type = paste(type, value, sep="_")) %>%
+        mutate(has_type = 1) %>%
+        select(-value) %>%
+        pivot_wider(names_from = c("type"),
+                            values_from = c("has_type"),
+                            id_cols = c("game_id"),
+                            names_sep = "_",
+                            values_fn = min,
+                            values_fill = 0)
+
+# now join
+games_model = active_games %>%
+        left_join(.,
+                  game_types_pivoted,
+                  by = "game_id") %>%
+        rename(numowned = owned) 
+
+rm(game_types_pivoted,
+   game_types_selected)
+
+# get most recent date
+most_recent_date = as.Date(games_model$timestamp[1])
+
+my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
+                        paste("Data and analysis at https://phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
+
+# bgg_today 
+bgg_today = get_bgg_data_from_github(Sys.Date())
+
+```
+
+```{r get user collection from bgg, warning=F, message=F, results = 'hide'}
+
+# run function and get user collection
+suppressWarnings({
+suppressMessages({
+        user_collection = get_user_collection(params$username)
+})
+})
+
+# username
+user_collection = user_collection %>%
+        mutate(username = tidy_username)
+
+```
+
+
+```{r join up collection and model data} 
+
+# deal with usernames with spaces, bleah
+games_and_collection_data = games_model %>%
+        left_join(., 
+                  user_collection%>%
+                          mutate(owned = case_when(own == 1 | prevowned == 1 ~ 'yes',
+                                                   TRUE ~ 'no')) %>%
+                          mutate(rated = case_when(!is.na(rating) ~ 'yes',
+                                                  TRUE ~ 'no')) %>%
+                          mutate(own = case_when(own == 1 ~ 'yes',
+                                                 TRUE ~ 'no')) %>%
+                          select(game_id, own, owned, rating, rated),
+                  by = c("game_id")) %>%
+        mutate_at(vars(own,
+                       owned,
+                       rated),
+                  ~ replace_na(., 'no')) %>%
+        mutate(username = username) %>%
+        filter(game_id %in% bgg_today$game_id | game_id %in% user_collection$game_id)
+
+```
+
+```{r set up training validation test split, warning=F, message=F}
+
+# training set
+games_train = games_and_collection_data %>%
+        filter(yearpublished < params$end_training_year) %>%
+        filter(usersrated > params$min_training_ratings)
+
+# validation set
+games_validation = games_and_collection_data %>%
+        filter(yearpublished == params$end_training_year)
+
+# test
+games_test= games_and_collection_data %>%
+        filter(yearpublished > params$end_training_year)
+
+# make an initial split based on previously defined splits
+validation_split = make_splits(list(analysis = seq(nrow(games_train)),
+                                 assessment = nrow(games_train) + seq(nrow(games_validation))),
+                               bind_rows(games_train,
+                                         games_validation))
+
+# make a second split for the training, validation, and test
+test_split = make_splits(
+        list(analysis = 
+                     seq(nrow(games_train) + nrow(games_validation)),
+             assessment = 
+                     nrow(games_train) + nrow(games_validation) + seq(nrow(games_test))),
+        bind_rows(games_train,
+                  games_validation,
+                  games_test))
+
+```
+
+
+```{r create base user recipe} 
+
+user_recipe = recipe(games_train) %>%
+        update_role(all_numeric(),
+                    new_role = "predictor") %>%
+        step_mutate_at(c("averageweight"),
+                         fn = ~ na_if(., 0)) %>% # set to skip as this will be an outcome
+        step_mutate_at(c("yearpublished",
+                         "playingtime"),
+                       fn = ~ na_if(., 0)) %>% # these variables come through as 0 if they are missing
+        update_role(one_of("timestamp",
+                           "own",
+                           "owned",
+                           "rated",
+                           "rating",
+                           "game_id",
+                           "name",
+                           "numcomments",
+                           "numweights",
+                           "numowned",
+                           "trading",
+                           "wanting",
+                           "wishing",
+                           "timestamp",
+                           "average",
+                           "averageweight",
+                           "bayesaverage",
+                           "usersrated",
+                           "stddev"),
+                      new_role = "id") %>%
+        step_filter(!is.na(yearpublished)) %>%
+        step_filter(!is.na(name)) %>%
+        step_mutate(missing_minage = case_when(is.na(minage) ~ 1,
+                                               TRUE ~ 0)) %>%
+        step_mutate(missing_playtingtime = case_when(is.na(playingtime) ~ 1,
+                                                     TRUE ~ 0)) %>%
+        step_impute_median(playingtime,
+                           maxplayers,
+                           minage) %>% # medianimpute numeric predictors
+        # step_mutate(published_prior_1950 = case_when(yearpublished<1950 ~ 1,
+        #                                                TRUE ~ 0)) %>%
+        step_mutate(minplayers = case_when(minplayers < 1 ~ 1,
+                                                     minplayers > 10 ~ 10, # truncate
+                                                     TRUE ~ minplayers),
+                    maxplayers = case_when(maxplayers < 1 ~ minplayers,
+                                                     maxplayers > 20 ~ 20,
+                                                     TRUE ~ maxplayers)) %>%
+        step_rm(minplaytime, maxplaytime) %>%
+        step_mutate(time_per_player = playingtime/ maxplayers) %>% # make time per player variable
+        step_mutate_at(starts_with("category_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("mechanic_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("artist_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("designer_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate_at(starts_with("publisher_"),
+                           fn = ~ replace_na(., 0)) %>%  
+        step_mutate_at(starts_with("family_"),
+                           fn = ~ replace_na(., 0)) %>%
+        step_mutate(number_mechanics = rowSums(across(starts_with("mechanic_"))),
+                  #    number_artists = rowSums(across(starts_with("art_"))),
+                      number_categories = rowSums(across(starts_with("category_")))) %>%
+        step_zv(all_predictors()) %>%
+        step_nzv(all_predictors(),
+                   -starts_with("publisher_"),
+                   -starts_with("artist_"),
+                   -starts_with("designer_"),
+                   freq_cut = 100/1) %>% 
+        step_corr(all_predictors(),
+                  threshold = 0.9) %>%
+        step_mutate(published_prior_1900 = case_when(yearpublished < 1900 ~ 1,
+                                                     TRUE ~ 0)) %>%
+        step_mutate(published_prior_1950 = case_when(yearpublished < 1950 ~ 1,
+                                                     TRUE ~ 0)) %>%
+        step_mutate(trunc_yearpublished = case_when(yearpublished < 1950 ~ 1950,
+                                              TRUE ~ yearpublished)) %>% # truncate
+        update_role("yearpublished",
+                    new_role = "id") %>%
+        # step_mutate(cut_yearpublished= yearpublished) %>%
+        # step_cut(cut_yearpublished,
+        #                      breaks = seq(1970, 2010, 10),
+        #                      include_outside_range = T) %>%
+        step_mutate(cut_playingtime= playingtime) %>%
+        step_cut(cut_playingtime,
+                             breaks = c(15, 45, 90, 180),
+                             include_outside_range = T) %>%
+        update_role("playingtime",
+                    new_role = "id") %>%
+        step_dummy(all_nominal_predictors()) %>%
+        step_log(time_per_player,
+                   offset = 1) %>%
+        step_dummy(all_nominal_predictors()) %>%
+        step_zv(all_predictors()) %>% # remove features with no variance
+        step_nzv(all_predictors(),
+                   -starts_with("publisher_"),
+                   -starts_with("artist_"),
+                   -starts_with("designer_"),
+                   freq_cut = 100/1) %>% # apply near zero variance filter
+        step_nzv(starts_with("artist_"),
+          #       -one_of(c("artist_ian_otoole",
+           #                "artist_chris_quilliams")), # allow for some specific artists, well known in recent years
+                 freq_cut = 250/1) %>%
+        step_corr(all_predictors(),
+                  threshold = 0.9) %>% # remove highly, highly correlated features
+        step_impute_linear(averageweight, 
+                           impute_with = imp_vars(
+                                   all_numeric_predictors(),
+                                   -starts_with("publisher_"),
+                                   -starts_with("artist_"),
+                                   starts_with("designer_"),
+                                   ))  # impute using a linear model (fast)
+
+```
+
+```{r now create outcome specific recipes}
+
+# recipe for owned
+recipe_owned = user_recipe %>%
+        update_role(owned,
+                    new_role = "outcome")
+
+```
+
+```{r define training folds for resampling, warning=F, message=F}
+
+# create folds for tuning
+set.seed(1999)
+train_folds_owned = vfold_cv(games_train,
+                      strata = owned,
+                      v=5)
+```
+
+
+```{r define models and workflows, warning=F, message=F}
+
+# penalized logistic regression
+glmnet_class_mod<- 
+        logistic_reg(penalty = tune::tune(),
+                     mixture = 0.5) %>%
+        set_engine("glmnet")
+
+# specify grid for tuning
+glmnet_grid <- tibble(penalty = 10^seq(-4, -0.75, 
+                                       length.out = 20))
+
+# decision tree
+cart_class_mod <- 
+   decision_tree(cost_complexity = tune(), min_n = tune()) %>% 
+   set_engine("rpart") %>% 
+   set_mode("classification")
+
+# make grid
+cart_grid = dt_grid <- grid_regular(
+  cost_complexity(), 
+  min_n(), 
+  levels = c(6, 3)
+)
+
+# specify regression metrics
+class_metrics<-metric_set(yardstick::roc_auc,
+                          yardstick::mn_log_loss)
+
+# control for resamples
+keep_pred <- control_resamples(save_pred = TRUE, 
+                               save_workflow = TRUE)
+
+# control for resamples
+control<- control_resamples(save_pred = TRUE, 
+                               save_workflow = TRUE,
+                               allow_par = T)
+
+# register parallel
+library(doParallel)
+numcores = parallel::detectCores()
+registerDoParallel(numcores -2)
+
+```
+
+
+```{r define workflowsets}
+
+# set up workflow set
+owned_set <-
+              workflow_set(
+                preproc = list(
+                        all = recipe_owned,
+                        full = recipe_owned %>%
+                              step_normalize(all_predictors())
+                ),
+                        # baseline = recipe_owned %>%
+                        #         step_select(all_outcomes(),
+                        #                     averageweight,
+                        #                     number_mechanics,
+                        #                     number_categories,
+                        #                     time_per_player,
+                        #                     starts_with("category")) %>%
+                        #         step_normalize(all_predictors())),
+                        # noartistdesigner = recipe_owned %>%
+                        #         step_rm(starts_with("artist"),
+                        #                 starts_with("designer")) %>%
+                        #         step_normalize(all_predictors()),
+                        # nopublisher = recipe_owned %>%
+                        #         step_rm(starts_with("publisher")) %>%
+                        #         step_normalize(all_predictors()),
+                        # nocategorical = recipe_owned %>%
+                        #         step_rm(starts_with("publisher"),
+                        #                 starts_with("category"),
+                        #                 starts_with("mechanic"),
+                        #                 starts_with("artist"),
+                        #                 starts_with("designer"),
+                        #                 starts_with("family")) %>%
+                        #         step_normalize(all_predictors())
+                        # ),
+                models = list(glmnet = glmnet_class_mod,
+                              cart = cart_class_mod),
+                cross = T
+        ) %>%
+        filter(grepl("glmnet|all_cart", wflow_id)) %>% # only run the decision tree on the full set
+        filter(!(grepl("all_glmnet", wflow_id)))
+
+
+# tidy up model names
+tidy_model_func = function(x) {
+        
+        x<-gsub("all", "", x)
+        x<-gsub("full", "", x)
+        x<-gsub("cart", "Decision Tree", x)
+        x<-gsub("glmnet", "GLM", x)
+        x<-gsub("_", "", x)
+        x
+        
+}
+
+```
+
+
+```{r now tune the models with workflow sets, warning=F, message=F, results = 'hide'}
+
+suppressMessages({
+set.seed(1999)
+# train average
+owned_tuned <- 
+        owned_set %>%
+        option_add(grid = cart_grid, id = "all_cart") %>%
+        option_add(grid = glmnet_grid, id = "full_glmnet") %>%
+ #       option_add(grid = 30, id = "baseline_glmnet") %>%
+        workflow_map("tune_grid", 
+                    # grid = 10,
+                     resamples = train_folds_owned, 
+                     control = keep_pred,
+                     metrics = class_metrics, 
+                     verbose = F)
+})
+
+```
+
+```{r define last fits on validation, warning=F, message=F}
+
+suppressMessages({
+owned_validation_last_fits = owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(last_fit = map2(.x = result,
+                               .y = best_tune,
+                              ~ .x %>% 
+                                      extract_workflow(.) %>%
+                                      finalize_workflow(., .y) %>%
+                                      last_fit(validation_split, 
+                                               metrics = class_metrics))) %>%
+        select(wflow_id, best_tune, last_fit) %>%
+        unnest(last_fit)
+})
+
+```
+
+```{r get predictions from resampling, warning=F, message=F}
+
+owned_resamples = owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest(preds) %>%
+        arrange(.row) %>%
+        left_join(., games_train %>%
+                          select(-owned) %>%
+                          mutate(.row = row_number()),
+                  by = c(".row")) %>%
+        select(wflow_id, .pred_yes, .row, owned, game_id, name, yearpublished) %>%
+        rename(prob = .pred_yes) %>%
+        mutate_if(is.numeric, round, 3) %>%
+        arrange(desc(prob)) %>%
+        select(wflow_id, yearpublished, game_id, name, prob, owned)
+        # bind_rows(.,
+        #           rated_glmnet_tune %>%
+        #                   collect_predictions(parameters = rated_glmnet_par) %>%
+        #                   arrange(.row) %>%
+        #                   left_join(., games_train %>%
+        #                                     select(-rated) %>%
+        #                                     mutate(.row = row_number()),
+        #                             by = c(".row")) %>%
+        #                   select(.pred_yes, .row, rated, game_id, name, yearpublished) %>%
+        #                   rename(prob = .pred_yes) %>%
+        #                   mutate_if(is.numeric, round, 3) %>%
+        #                   arrange(desc(prob)) %>%
+        #                   select(yearpublished, game_id, name, prob, rated)
+        #           )
+
+registerDoSEQ()
+
+```
+
+# The Data
+
+## Collection Overview
+
+We can look at a basic description of the number of games that the user owns, has rated, has previously owned, etc.
+
+```{r examine collection, warning=F, message=F}
+
+# summarize
+summarized = user_collection %>% 
+        mutate(username = username) %>%
+        left_join(., games_model, by = c("game_id")) %>%
+        mutate(rated = case_when(!is.na(rating) ~ 1,
+                                 TRUE ~ 0)) %>%
+        mutate(owned_not_rated= case_when(rated == 0 & own == 1 ~ 1,
+                                          TRUE ~ 0)) %>%
+        mutate(played = case_when(own == 1 | rated == 1 | prevowned == 1 ~ 1,
+                                  TRUE ~ 1)) %>%
+        select(username, date, game_id, name, own, rated, prevowned, owned_not_rated, wanttoplay, fortrade, played) %>%
+        group_by(username, date) %>%
+        summarize(Own = sum(own),
+                  `Rated, Owned, or Previously Owned` = sum(played),
+                  `Previously Owned` = sum(prevowned),
+                  Rated = sum(rated),
+                  `For Trade` = sum(fortrade),
+                  `Want To Play`= sum(wanttoplay),
+                  `Own But Not Rated` = sum(owned_not_rated),
+                  .groups = 'drop') %>%
+        gather("variable", "value",
+               -username, -date) %>%
+        mutate(shame = case_when(variable == 'Own But Not Rated' ~ 'yes',
+                                 TRUE ~ 'no')) %>%
+        filter(variable != 'Rated, Owned, or Previously Owned') %>%
+        mutate(max = max(value))
+
+# plot
+summarized %>%
+        ggplot(., aes(x=reorder(variable, value),
+                      label = value,
+                      fill = shame,
+                      y=value))+
+        geom_col()+
+        geom_text(hjust = -0.1)+
+        theme_phil()+
+        coord_flip(ylim = c(0, summarized$max[1]*1.05))+
+        ylab("Number of Games")+
+        xlab("")+
+        ggtitle(paste(username, "'s Collection on BGG", sep=""),
+                subtitle = str_wrap('Games owned but not rated may potentially be a shelf of shame. In this event, these games are highlighted in red in order to potentially make the user feel bad about themselves.',100))+
+        my_caption+
+        scale_fill_manual(values = c("grey60", "firebrick3"))+
+        guides(fill = "none")
+        
+
+```
+
+## Collection by Year Published
+
+What years has the user owned/rated games from? While we can't see when a user added or removed a game from their collection, we can look at their collection by the years in which their games were published.
+
+```{r ownership by year, warning=F, message=F}
+
+years = seq(1950, year(Sys.Date())+1, 1) %>%
+        as_tibble() %>%
+        mutate(username = username) %>%
+        rename(yearpublished = value)
+
+collection_over_time = years %>%
+        left_join(., 
+                user_collection %>%
+                        left_join(., games_model,
+                                  by = c("game_id")) %>%
+                group_by(username, yearpublished) %>%
+                mutate(rated = case_when(!is.na(rating) ~ 1,
+                                         TRUE ~ 0)) %>%
+                mutate(owned_not_rated= case_when(rated == 0 & own == 1 ~ 1,
+                                                  TRUE ~ 0)) %>%
+                mutate(played = case_when(own == 1 | rated == 1 | prevowned == 1 ~ 1,
+                                          TRUE ~ 1)) %>%
+                select(username, yearpublished, game_id, name, own, rated, prevowned, owned_not_rated, wanttoplay, fortrade, played) %>%
+                group_by(username, yearpublished) %>%
+                summarize(Own = sum(own),
+                          `Rated, Owned, or Previously Owned` = sum(played),
+                          `Previously Owned` = sum(prevowned),
+                          Rated = sum(rated),
+                          `For Trade` = sum(fortrade),
+                          `Want To Play`= sum(wanttoplay),
+                          `Own But Not Rated` = sum(owned_not_rated),
+                          .groups = 'drop'),
+                by = c("username", "yearpublished"))
+
+
+collection_over_time %>%
+        melt(id.vars = c("username", "yearpublished")) %>%
+        mutate(value = replace_na(value, 0)) %>%
+        filter(variable == 'Own' | variable == 'Rated') %>%
+        filter(yearpublished >= 1980) %>%
+        arrange(variable, yearpublished) %>%
+        group_by(variable) %>%
+        mutate(diff = value - dplyr::lag(value, 1)) %>%
+        mutate(max_diff = max(diff, na.rm=T)) %>%
+        mutate(largest_own_increase = case_when(variable == 'Own' & diff == max_diff ~ yearpublished)) %>%
+  #      mutate(largest_ratings_increase = case_when(variable == 'Rated' & diff == max_diff ~ yearpublished)) %>%
+        ungroup() %>%
+        mutate(max = max(value, na.rm=T)) %>%
+        ggplot(., aes(x=yearpublished,
+                      color = variable,
+                     y = value))+
+        geom_vline(aes(xintercept = largest_own_increase),
+                   lwd = 1.03,
+                   col = 'black',
+                   alpha = 0.4)+
+        # geom_vline(aes(xintercept = largest_ratings_increase),
+        #            lwd = 1.03,
+        #            col = 'orange',
+        #            alpha = 0.4)+
+        geom_line(lwd=1.02)+
+        # geom_col()+
+        # facet_wrap(variable ~.,
+        #            ncol = 1)+
+       # scale_fill_colorblind()+
+        scale_color_colorblind()+
+        theme_phil()+
+        guides(fill = "none")+
+        xlab("Year Published")+
+        ylab("Number of Games")+
+        ggtitle(paste(username, "'s Collection by Year Published", sep = ""),
+                subtitle = str_wrap("Vertical bars indicate when user had largest increase in number of games owned.",100))+
+        my_caption
+        
+```
+
+## What types of games does `r username` own?
+
+We can look at the most frequent types of categories, mechanics, designers, and artists that appear in a user's collection.
+
+```{r game types, warning=F, message=F, fig.height=8, fig.width=10}
+
+game_types %>%
+        filter(game_id %in% user_collection$game_id) %>%
+        filter(type %in% c("artist",
+                           "category",
+                           "designer",
+                           "mechanic")) %>%
+        mutate(username = username) %>%
+        group_by(username, type, value) %>%
+        summarize(n = n_distinct(game_id, na.rm=T),
+                  .groups = 'drop') %>%
+        group_by(type) %>%
+        slice_max(order_by = n, 
+                  with_ties =F,
+                  n = 25) %>%
+        mutate(value = tidy_name_func(value)) %>%
+        # mutate(group = factor(group,
+        #                       levels = c("category",
+        #                                  "mechanic",
+        #                                  "designer",
+        #                                  "artist"))) %>%
+        ggplot(., aes(x = reorder_within(value, n, within = type),
+                      fill = type,
+                      y = n))+
+        geom_col()+
+        facet_wrap(type ~.,
+                   ncol = 2,
+                   scales="free")+
+        scale_x_reordered()+
+        coord_flip()+
+        theme_phil()+
+        xlab("")+
+        ylab("Number of Games")+
+        guides(fill = "none") +
+        ggtitle(paste("Top Categories, Mechanics, Designers, and Artists for ", username, sep = ""),
+                subtitle = str_wrap("Filtering to top 25 most frequent features for games owned by user",90))+
+        scale_fill_brewer(palette  = "Dark2")
+
+
+```
+
+# Modeling **`r tidy_username`'s** Collection
+
+We'll examine predictive models trained on a user's collection for games published through `r params$end_training_year`. How many games has the user owned/rated/played in the training set (games prior to `r params$end_training_year`)?
+
+```{r get to know collection, echo=F, warning=F, message=F}
+
+bind_rows(games_train %>%
+                  mutate(dataset = "training",
+                         period = paste("published before",  params$end_training_year)),
+          games_validation %>%
+                  mutate(dataset = "validation",
+                         period = paste("published", params$end_training_year)),
+          games_test %>%
+                  mutate(dataset = "test",
+                         period = paste("published after", params$end_training_year)
+                         )) %>%
+        mutate(username = tidy_username) %>%
+        group_by(username, dataset, period) %>%
+        mutate(owned = case_when(owned == 'yes' ~ 1,
+                                 TRUE ~ 0),
+               rated = case_when(rated == 'yes' ~ 1,
+                                 TRUE ~ 0)) %>%
+        summarize(games_owned = sum(owned),
+                  games_rated = sum(rated),
+                  .groups = 'drop') %>%
+        mutate(dataset = factor(dataset, levels = c("training",
+                                                    "validation", 
+                                                    "test"))) %>%
+        arrange(dataset) %>%
+        flextable() %>%
+        flextable::autofit()
+
+```
+
+<!-- There are two main (binary) outcomes we will be modeling for the user.  -->
+
+<!-- The first, **owned** refers to whether the user currently owns or has previously owned a game in their collection. The second, **rated** refers to whether the user has rated the game. We will train predictive models to learn the probability that the user will own or play individual games based on their features.  -->
+
+The main outcome we will be modeling for the user is **owned**, which refers to whether the user currently owns or has a previously owned a game in their collection. Our goal is to train a predictive model to learn the probability that a user will add a game to their collection based on its observable features. This amounts to looking at historical data and looking to find patterns that exist between features of games and games present in the user's collection.
+
+## Decision Tree for `r tidy_username`
+
+One of the models we trained was a decision tree, which looks for decision rules that can be used to separate games the user owns from games they don't. The resulting model produces a decision corresponding to yes or no statements: to explain why the model predicts the user to own game, we start at the top of the tree and follow the rules that were learned from the training data. 
+
+Note: the tree below has been further pruned to make it easier to visualize.
+
+```{r plot decision tree, echo=F, warning=F, message=F, fig.height=8, fig.width=10}
+
+library(rpart.plot)
+
+foo = owned_validation_last_fits %>%
+        filter(wflow_id == 'all_cart') %>%
+        mutate(fit = map(.workflow,
+                         ~ .x %>%
+                                 extract_fit_parsnip() %$%
+                                 fit)) %>%
+        pluck("fit", 1)
+
+if (nrow(foo$frame) > 40) {tree = rpart::prune(foo, cp=.002)} else {tree = foo}
+
+
+# tidy up the text
+tree$frame = tree$frame %>%
+        mutate(var = gsub("Leaf", "leaf", tidy_name_func(tree$frame$var)))
+
+# plot
+rpart.plot(tree, 
+                   type = 2,
+                   clip.right.labs = FALSE, 
+                   branch = .4, 
+           roundint=T,
+           box.palette = "Grays",
+           branch.col = "grey60",
+           main = paste("Predicting ", tidy_username, "'s Collection", sep=""),
+           extra = "auto",
+           digits = -3)
+      #     under = TRUE)
+
+```
+
+Decision trees are highly interpretible models that are easy to train and can identify important interactions and nonlinearities present in the data. Individual trees have the drawback of being less predictive than other common models, but it can be useful to look at them to gain some understanding of key predictors and relationships found in the training data.
+
+## Coefficients for `r tidy_username`
+
+We can examine coefficients from another model we trained, which is a logistic regression with elastic net regularization (which I will refer to as a penalized logistic regression). Positive values indicate that a feature increases a user's probability of owning/rating a game, while negative values indicate a feature decreases the probability. To be precise, the coefficients indicate the effect of a particular feature on the log-odds of a user owning a game.
+
+```{r plot coefficients, echo=F, warning=F, message=F, fig.height=11, fig.width=10}
+
+owned_glmnet_train_fit = owned_validation_last_fits %>%
+        filter(wflow_id == 'full_glmnet') %>% 
+        mutate(fit = map(.workflow,
+                         ~ .x %>% extract_fit_parsnip())) %>%
+        pluck("fit", 1)
+
+# get coefs from model fit to trainin set
+owned_glmnet_train_fit %>%
+        tidy() %>%
+        filter(term != '(Intercept)') %>%
+        slice_max(order_by = abs(estimate),
+                  n = 40,
+                  with_ties = F) %>%
+        filter(abs(estimate) > 0) %>%
+        arrange(desc(estimate)) %>%
+        mutate(term = tidy_name_func(term)) %>%
+        mutate(username = tidy_username) %>%
+        ggplot(., aes(x=estimate,
+                      color = estimate,
+                      y=reorder(term, estimate)))+
+        geom_point(size=2)+
+        theme_phil()+
+        geom_vline(xintercept = 0,
+                   linetype = 'dashed',
+                   col = 'grey60')+
+        theme_phil()+
+        theme(legend.title = element_text(size = 8), # remove the vertical grid lines
+           panel.grid.major.x = element_blank() ,
+           # explicitly set the horizontal lines (or they will disappear too)
+           panel.grid.major.y = element_line( size=.1, color="grey60"))+
+        xlab("Estimated Effect on Outcome")+
+        ylab("")+
+        my_caption+
+        ggtitle(paste("What predicts ", tidy_username, "'s collection?", sep=""),
+                subtitle = str_wrap(paste("Coefficients from a penalized logistic regression for games owned by specified user. Predictors centered and scaled. Model trained on games published prior to", params$end_training_year+1), 120))+
+        scale_color_gradient2(low = "red",
+                              mid = "grey60",
+                              high = "deepskyblue2",
+                              limits = c(-0.1, 0.1),
+                              oob = scales::squish)+
+        guides(color = guide_colorbar(barwidth = 15,
+                                      barheight = 0.5,
+                                      title = "Decreases Probability                               Increases Probability",
+                                      title.position = 'top',
+                                      label = F))
+
+```
+
+## Visualizing Predictors
+
+Why did the model identify these features? We can make density plots of the important features for predicting whether the user owned a game. Blue indicates the density for games owned by the user, while grey indicates the density for games not owned by the user. 
+
+```{r get top predictors for visualization, warning=F, message=F}
+
+#  get top 16 predictors with largest absolute coefficient
+top_predictors = owned_glmnet_train_fit %>%
+        tidy() %>%
+        mutate(abs = abs(estimate)) %>%
+        filter(term != '(Intercept)') %>%
+        slice_max(., order_by = abs,
+            n = 16,
+            with_ties = F) %>%
+        pull(term)
+
+## get just the dummy variables
+dummy_predictors = owned_glmnet_train_fit %>%
+        tidy() %>%
+        mutate(abs = abs(estimate)) %>%
+        filter(term != '(Intercept)') %>%
+        filter(grepl('^family_|^mechanic_|^publisher_|^category_|^artist_', term)) %>%
+        slice_max(., order_by = abs,
+            n = 25,
+            with_ties = F) %>%
+        pull(term)
+
+# set the levels
+top_predictors_levels = tidy_name_func(top_predictors)
+dummy_predictors_levels = tidy_name_func(dummy_predictors)
+
+# numeric predictors
+baked_train = owned_validation_last_fits %>%
+        filter(wflow_id == 'full_glmnet') %>%  
+        mutate(recipe = map(.workflow,
+                         ~ .x %>% extract_recipe())) %>%
+        pluck("recipe", 1) %>%
+        bake(new_data = games_train)
+
+```
+
+
+```{r get top predictors, warning=F, message=F, fig.height=10, fig.width=10}
+
+# make plot      
+predictor_plot = baked_train %>%
+        rename(outcome = owned) %>%
+        select(username,
+                 outcome,
+                 game_id,
+                 name,
+                 yearpublished,
+                 all_of(top_predictors)) %>%
+        gather("variable",
+               "value",
+               -username, -outcome, -game_id, -name, -yearpublished) %>%
+        mutate(variable = factor(tidy_name_func(variable),
+                           levels = top_predictors_levels)) %>%
+         ggplot(., aes(x=value,
+                fill= outcome,
+                color = outcome,
+                y=outcome))+
+         geom_density_ridges(alpha=0.6)+
+         facet_wrap(variable~.,
+             scales="free")+
+         theme_phil()+
+         scale_fill_manual(values = c("grey60", 
+                               "deepskyblue1"))+
+         scale_color_manual(values = c("grey60", 
+                               "deepskyblue1"))+
+         guides(fill = "none",
+         color = "none")+
+         ylab("User Owns Game?")+
+         xlab("")+
+         labs(title = "What Explains a User's Collection?",
+                             subtitle = str_wrap(paste("Plotting density of games owned by user by top predictors from model. Data from all games published before", params$end_training_year), 90))+
+         theme(panel.grid.major=element_blank(),
+         panel.grid.minor = element_blank())+
+         my_caption
+#  mutate(variable = rename_func(variable)) %>%
+  
+ 
+suppressWarnings({
+suppressMessages({
+ print(predictor_plot)
+})
+})
+
+```
+
+Binary predictors can be difficult to see with this visualization, so we can also directly examine the percentage of games in a user's collection with a predictor vs the percentage of all games with that predictor.
+
+```{r dummy predictors, warning=F, message=F}
+
+#  , though this can also be difficult to see visually with low percentages.
+diff_func <- function(x) {
+  
+  breaks<-seq(-0.4, 0.4, .01)
+  
+#  breaks = weight_deciles
+  colorRamp=colorRampPalette(c("red", "white", "deepskyblue1"))
+  col_palette <- colorRamp(length(breaks))
+  mycut <- cut(x, 
+    breaks = breaks,
+    include.lowest = TRUE, 
+    right=T,
+    label = FALSE)
+  col_palette[mycut]
+}
+
+ratio_func <- function(x) {
+  
+  breaks<-seq(1, 40, .1)
+  
+#  breaks = weight_deciles
+  colorRamp=colorRampPalette(c("white", "deepskyblue1"))
+  col_palette <- colorRamp(length(breaks))
+  mycut <- cut(x, 
+    breaks = breaks,
+    include.lowest = TRUE, 
+    right=T,
+    label = FALSE)
+  col_palette[mycut]
+}
+
+ratio_func2 <- function(x) {
+  
+  breaks<-c(seq(0, .99, length=10),
+            seq(1, 40, length = 10))
+  
+#  breaks = weight_deciles
+  colorRamp=colorRampPalette(c("red", "white", "deepskyblue1"))
+  col_palette <- colorRamp(length(breaks))
+  mycut <- cut(x, 
+    breaks = breaks,
+    include.lowest = TRUE, 
+    right=T,
+    label = FALSE)
+  col_palette[mycut]
+}
+
+## get just the dummy variables
+dummy_predictors2 =  owned_glmnet_train_fit %>%
+        tidy() %>%
+        mutate(abs = abs(estimate)) %>%
+        filter(term != '(Intercept)') %>%
+        filter(grepl('^family_|^mechanic_|^publisher_|^category_|^artist_', term)) %>%
+        slice_max(., order_by = abs,
+            n = 16,
+            with_ties = F) %>%
+        filter(abs > 0) %>%
+        pull(term)
+
+# set the levels
+dummy_predictors_levels2 = tidy_name_func(dummy_predictors2)
+
+# create table
+games_train %>%
+        rename(outcome = owned) %>%
+        select(username,
+               outcome,
+               game_id,
+               name,
+               yearpublished,
+               all_of(dummy_predictors2)) %>%
+        mutate_at(vars(dummy_predictors2),
+          ~  case_when(. == 1 ~ 'yes',
+                      TRUE ~ 'no')) %>%
+        gather("variable",
+               "value",
+               -username, -outcome, -game_id, -name, -yearpublished) %>%
+        mutate(variable = factor(tidy_name_func(variable),
+                           levels = all_of(dummy_predictors_levels2))) %>%
+        group_by(username, 
+                 outcome, 
+                 variable,
+                 value) %>%
+        summarize(n_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        rename(user_owns = outcome) %>%
+      #  filter(outcome == 'no') %>%
+        spread(value, n_games) %>%
+        arrange(variable) %>%
+        mutate(prop = yes / (yes+no)) %>%
+        select(username, user_owns, variable, prop) %>%
+        spread(user_owns, prop) %>%
+        mutate(yes = replace_na(yes, 0)) %>%
+        rename(All_Games = no,
+               User_Collection = yes,
+               Feature = variable) %>%
+        select(username, Feature, User_Collection, All_Games) %>%
+     #   mutate(Difference = In_Collection - All_Games) %>%
+        mutate(Ratio = (User_Collection / All_Games)) %>%
+        mutate(Ratio = round(Ratio, 2)) %>%
+     #          Difference_Perc = (In_Collection - All_Games) /All_Games) %>%
+        arrange(desc(Ratio)) %>%
+     #   mutate_if(is.numeric, round, 2) %>%
+        flextable() %>%
+        flextable::autofit() %>%
+        bg(., j = c("All_Games",
+                    "User_Collection"),
+           bg = col_func) %>%
+        # bg(., j = c("Difference"),
+        #    bg = diff_func)  %>%
+        bg(., j = c("Ratio"),
+           bg = ratio_func2)  %>%
+            add_header_row(values = 
+                                   c(
+                                           "",
+                                           "",
+                                           "% of Games with Feature",
+                                           "% of Games with Feature",
+                                      #     "",
+                                           "")) %>%
+    flextable::align(align = "center", part = "header") %>%
+    merge_h(part = "header") %>%
+    merge_v(part = "header") %>%
+        set_formatter(
+                User_Collection = function(x) sprintf( "%.1f%%", x*100 ),
+                All_Games  = function(x) sprintf( "%.1f%%", x*100 ),
+                Difference = function(x) sprintf( "%.1f%%", x*100 )
+           )
+
+        
+        
+        
+# suppressWarnings({
+# suppressMessages({
+#  print(dummy_plot)
+# })
+# })
+
+```
+
+# Examine Model's Performance on Training Set
+
+Before predicting games in upcoming years, we can examine how well the model did and what games it liked in the training set. In this case, we used resampling techniques (cross validation) to ensure that the model had not seen a game before making its predictions.
+
+## Top Games from Training Set
+
+Displaying the 100 games from the training set with the highest probability of ownership, highlighting in blue games the user has owned.
+
+```{r top games from oos, echo=F, warning=F, message=F}
+
+owned_resamples_table = 
+owned_resamples %>%
+        mutate_at(vars(c("yearpublished",
+                         "game_id")),
+                  ~ as.character(.)) %>%
+        mutate(wflow_id = paste("prob", wflow_id, sep="_")) %>%
+        spread(wflow_id, prob) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Name = name,
+               `Pr(Owned)` = prob_full_glmnet,
+               Owned = owned) %>%
+        select(Published, ID, Name, `Pr(Owned)`, Owned) 
+
+owned_resamples_table %>%
+        arrange(desc(`Pr(Owned)`)) %>%
+        mutate(Rank = row_number()) %>%
+        select(Rank, everything()) %>%
+        head(100) %>%
+        flextable() %>%
+        flextable::autofit() %>%
+        bg(., i = ~ Owned == 'yes',
+           bg = 'deepskyblue1')
+```
+
+## Model Evaluation
+
+This section contains a variety of visualizations and metrics for assessing the performance of the model(s) during resampling. If you're not particularly interested in predictive modeling, skip down further to the predictions from the model.
+
+### Separation Plots
+
+An easy way to examine the performance of classification model is to view a separation plot. We plot the predicted probabilities from the model for every game (from resampling) from lowest to highest. We then overlay a blue line for any game that the user does own. A good classifier is one that is able to *separate* the blue (games owned by the user) from the white (games not owned by the user), with most of the blue occurring at the highest probabilities (right side of the chart).
+
+```{r separation plot for training set, echo=F, warning=F, message=F, fig.height=6, fig.width=10}
+
+owned_resamples %>%
+        mutate(username = tidy_username) %>%
+        arrange(prob) %>%
+        mutate(rank = row_number()) %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+        ggplot(., aes(x=rank,
+                      y=prob))+
+        geom_vline(data = owned_resamples %>%
+                           mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+                           mutate(username = tidy_username) %>%
+                           arrange(prob) %>%
+                           mutate(rank = row_number()) %>%
+                           filter(owned == 'yes'),
+                   aes(xintercept = rank),
+                  col='deepskyblue1')+
+        geom_point(alpha=0.75,size=0.5)+
+        facet_wrap(wflow_id~.,
+                   ncol =1)+
+        theme_phil()+
+        xlab("Game Rank (Lowest to Highest)")+
+        ylab("Pr(Owned)")+
+        labs(title = paste("How well did the models do?"),
+             subtitle = str_wrap("Displaying cross validated probabilities for all games in the training set from least likely to most likely. Vertical blue lines indicate game was actually in the user's collection.", 125))+
+        my_caption
+
+```
+
+### Area Under the Curve
+
+We can more formally assess how well each model did in resampling by looking at the area under the receiver operating characteristic curve. A perfect model would receive a score of 1, while a model that cannot predict the outcome will default to a score of 0.5. The extent to which something is a *good* score depends on the setting, but generally anything in the .8 to .9 range is very good while the .7 to .8 range is perfectly acceptable.
+
+```{r assess resampled predictions, echo=F, warning=F, message=F}
+
+owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest() %>%
+        group_by(wflow_id) %>%
+        roc_auc(owned, .pred_yes, event_level = "second") %>%
+        mutate_if(is.numeric, round, 2)  %>%
+        arrange(desc(.estimate)) %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+        flextable() %>%
+        autofit()
+
+
+owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest() %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+        group_by(wflow_id) %>%
+        roc_curve(owned, .pred_yes, event_level = "second") %>%
+        mutate(outcome = "owned") %>%
+        ggplot(aes(x = 1 - specificity, 
+                   group =wflow_id,
+                   color = wflow_id,
+                   y = sensitivity)) +
+        geom_line(size = 1.02) +
+        facet_wrap(outcome~.)+
+        theme_phil()+
+        geom_abline(lty = 2, alpha = 0.5, color = "gray50", size = 1.2)+
+        scale_color_colorblind()
+
+```
+
+### Lift and Gain Curve
+
+Another way to think about the model performance is to view its lift, or its ability to detect the positive outcomes over that of a null model. High lift indicates the model can much more quickly find all of the positive outcomes (in this case, games owned or played by the user), while a model with no lift is no better than random guessing. A gains chart is another way to view this.
+
+```{r plot lift and gain curve, warning=F, message=F}
+
+resample_lift = 
+owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest(preds) %>%
+        group_by(wflow_id) %>%
+       # collect_predictions(parameters = owned_glmnet_par) %>%
+        lift_curve(owned, .pred_yes, event_level = "second") %>%
+        mutate(outcome = "owned") %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+        ggplot(., aes(x=.n,
+                      color = wflow_id,
+                      y = .lift)) +
+        geom_line()+
+        theme_phil()+
+        scale_color_colorblind()+       
+        ggtitle("Lift Curve")+
+        facet_wrap(outcome ~.)
+
+resample_gains = 
+owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest() %>%
+        group_by(wflow_id) %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+       # collect_predictions(parameters = owned_glmnet_par) %>%
+        gain_curve(owned, .pred_yes, event_level = "second") %>%
+        mutate(outcome = "owned") %>%
+        ggplot(., aes(x=.percent_tested,
+                      color = wflow_id,
+                      y = .percent_found)) +
+        geom_line()+
+        theme_phil()+
+        scale_color_colorblind()+       
+        ggtitle("Gain Curve")+
+        facet_wrap(outcome ~.)
+
+resample_lift + resample_gains
+```
+
+### Optimal Cutpoint and Confusion Matrix
+
+While we are probably more interested in the lift provided by the models to evaluate their efficacy, we can also explore the optimal cutpoint if we wanted to define a hard threshold for identifying games a user will own vs not own. 
+
+The threshold we select depends on how we much we care about false positives (games the model predicts that the user does not own) vs false negatives (games the user owns that the model does not predict). We can toggle threshold to 
+
+```{r evaluate cutpoint, warning=F, message=F}
+
+thresholds <- seq(0, 1, by = 0.01)
+
+eval_metrics = metric_set(yardstick::mcc,
+                          yardstick::j_index,
+                          yardstick::f_meas)
+
+eval = foreach(i = 1:length(thresholds), .combine=bind_rows) %do% {
+        
+        owned_tuned %>%
+                mutate(best_tune = map(result,
+                                       ~ select_best(.x, metric = "roc_auc"))) %>% 
+                mutate(preds = map2(result,
+                                    best_tune,
+                                       ~ .x %>% collect_predictions(parameters = .y))) %>%
+                select(wflow_id, preds) %>%
+                unnest() %>%
+                group_by(wflow_id) %>%
+                mutate(.pred_yes = case_when(.pred_yes > thresholds[i] ~ 'yes',
+                                             TRUE ~ 'no')) %>%
+                mutate(.pred_yes = factor(.pred_yes,
+                                          levels = c("no", "yes"))) %>%
+                eval_metrics(truth = owned, estimate = .pred_yes, event_level = "second") %>%
+                mutate(.threshold = thresholds[i])
+}
+
+
+# using mcc
+selected_threshold = eval %>%
+        filter(.metric == 'mcc') %>%
+        group_by(wflow_id, .metric) %>%
+        slice_max(order_by = .estimate, n =1, with_ties = F)
+
+# now get the confusion matrix given
+foo = owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest() %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        left_join(.,
+                  selected_threshold,
+                  by = "wflow_id") %>%
+        mutate(class = case_when(.pred_yes > .threshold ~ 'yes',
+                                             TRUE ~ 'no')) %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+        group_by(wflow_id) %>%
+        conf_mat(owned,
+                 class) %>%
+        mutate(plot = map(conf_mat,
+                          ~ .x %>% autoplot(type='heatmap')))
+
+cm1 = foo %>% 
+        pluck("plot", 1) +
+        theme_phil()+
+        theme(legend.position = 'none')+
+        ggtitle("Balance FPs and FNs",
+                subtitle = paste("Setting cutpoint at", selected_threshold %>% 
+                filter(wflow_id == 'full_glmnet') %>% 
+                pull(.threshold)))+
+        annotate("text",
+                 x = "yes",
+                 y = "no",
+                 label = "False Negatives",
+                 vjust=2.5)+
+        annotate("text",
+                 x = "no",
+                 y = "yes",
+                 label = "False Positives",
+                 vjust=2.5)+
+        annotate("text",
+                 x = "yes",
+                 y = "yes",
+                 label = "True Positives",
+                 vjust=2.5)+
+                annotate("text",
+                 x = "no",
+                 y = "no",
+                 label = "True Negatives",
+                 vjust=2.5)+
+                theme(plot.title = element_text(hjust = 0.5),
+              plot.subtitle = element_text(hjust=0.5))
+
+
+# using mcc
+selected_threshold = eval %>%
+        filter(.metric == 'j_index') %>%
+        group_by(wflow_id, .metric) %>%
+        slice_max(order_by = .estimate, n =1, with_ties = F)
+
+# now get the confusion matrix given
+foo = owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest() %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        left_join(.,
+                  selected_threshold,
+                  by = "wflow_id") %>%
+        mutate(class = case_when(.pred_yes > .threshold ~ 'yes',
+                                             TRUE ~ 'no')) %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+        group_by(wflow_id) %>%
+        conf_mat(owned,
+                 class) %>%
+        mutate(plot = map(conf_mat,
+                          ~ .x %>% autoplot(type='heatmap')))
+
+cm2 = foo %>% 
+        pluck("plot", 1) +
+        theme_phil()+
+        theme(legend.position = 'none')+
+        ggtitle("Minimize FNs",
+                subtitle = paste("Setting cutpoint at", selected_threshold %>% 
+                filter(wflow_id == 'full_glmnet') %>% 
+                pull(.threshold)))+
+        annotate("text",
+                 x = "yes",
+                 y = "no",
+                 label = "False Negatives",
+                 vjust=2.5)+
+        annotate("text",
+                 x = "no",
+                 y = "yes",
+                 label = "False Positives",
+                 vjust=2.5)+
+        annotate("text",
+                 x = "yes",
+                 y = "yes",
+                 label = "True Positives",
+                 vjust=2.5)+
+                annotate("text",
+                 x = "no",
+                 y = "no",
+                 label = "True Negatives",
+                 vjust=2.5)+
+        theme(plot.title = element_text(hjust = 0.5),
+              plot.subtitle = element_text(hjust=0.5))
+                # "to minimize false negatives"),
+                # 90))
+
+# eval %>%
+#         ggplot(., aes(x=.threshold,
+#                       color = wflow_id,
+#                       y = .estimate))+
+#         geom_line()+
+#         facet_wrap(.metric ~.,
+#                    ncol = 2,
+#                    scales="free_y")+
+#         theme_phil()+
+#         scale_color_colorblind()+
+#         geom_vline(data = eval %>%
+#                            group_by(.metric) %>% 
+#                            slice_max(order_by = .estimate, n =1, with_ties = F) %>%
+#                            ungroup(),
+#                    aes(xintercept = .threshold))
+
+
+cm1 + cm2
+
+```
+
+### Calibration
+
+Finally, we can understand the performance of the model by examining its calibration. If the model assigns a probability of 5%, how often does the outcome actually occur? A well calibrated model is one in which the predicted probabilities reflect the probabilities we would observe in the actual data. We can assess the calibration of a model by grouping its predictions into bins and assessing how often we observe the outcome versus how often our model expects to observe the outcome.
+
+A model that is well calibrated will closely follow the dashed line - its expected probabilities match that of the observed probabilities. A model that consistently underestimates the probability of the event will be over this dashed line, be a while a model that overestimates the probability will be under the dashed line.
+
+```{r assess calibration on training set, warning=F, message=F}
+
+probs = owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest()  %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        select(.pred_yes)
+
+cuts = c(0, 0.01, 0.02, 0.03, 0.05, 0.1, 0.15, 0.25, 0.35, 0.5, 0.75, 1)
+
+custom_bins = apply(probs, 2, cut, cuts)
+
+owned_tuned %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(preds = map2(result,
+                            best_tune,
+                               ~ .x %>% collect_predictions(parameters = .y))) %>%
+        select(wflow_id, preds) %>%
+        unnest()  %>%
+        mutate(bin = cut(.pred_yes, cuts)) %>%
+   #     group_by(bin, owned) %>% count()
+     #   mutate(bin = ntile(.pred_yes, 200)) %>%
+   #     mutate(bin = plyr::round_any(.pred_yes, 0.05, floor)) %>%
+        mutate(actual = case_when(owned == 'yes' ~ 1,
+                                  TRUE ~ 0)) %>%
+        group_by(bin) %>%
+        summarize(n = n(),
+               pred_bin = mean(.pred_yes),
+               prob_bin = mean(actual),
+               se = sqrt((prob_bin * (1 - prob_bin)) / n),
+               ul = prob_bin + 1.96 * se, 
+               ll = prob_bin - 1.96 * se) %>%
+        mutate(outcome = "owned") %>%
+        ggplot(.,
+               aes(x = pred_bin, 
+                   y = prob_bin,
+                   label = n,
+                   ymin = ll, 
+                   ymax = ul)) +
+        geom_text_repel(size=3)+
+        geom_pointrange(size = 0.5, color = "black") +
+         scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.2)) +
+         scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.2)) +
+        geom_abline(slope = 1,
+                    intercept = 0,
+                    linetype = 'dotted')+
+       # geom_smooth(span = 0.9)+
+        theme_phil()+
+        xlab("Predicted Probability")+
+        ylab("Observed Probability")+
+        geom_line(alpha = 0.5)+
+        my_caption+
+        facet_wrap(outcome~.)+
+        ggtitle("Calibration Plot")+
+        annotate("text",
+                 x = 0.2, 
+                 y = 0.7,
+                 label = "underestimates \n probability")+
+        annotate("text",
+                 x = 0.85, 
+                 y = 0.4,
+                 label = "overestimates \n probability")
+        
+# 
+#                prob_bin = mean(as.numeric(owned)))
+#         spread(owned, n) %>%
+#         mutate_at(vars(yes,no),
+#                   replace_na, 0) %>%
+#         mutate(prop = yes / (yes+no)) %>%
+#         mutate(n = no + yes) %>%
+#         group_by(bin) %>%
+#         mutate(bin_pred = mean(.pred_yes))
+#         mutate(type = "train") %>%
+#         ggplot(., aes(x=bin, 
+#                       group = type,
+#                       y=prop))+
+#         geom_point(aes(size=n))+
+#         geom_line(show.legend = F)+
+#      #   scale_color_colorblind()+
+#         theme_phil()+
+#         geom_abline(slope = 1,
+#                     intercept = 0,
+#                     linetype = 'dotted')
+#         group_by
+#         
+#         calib
+
+
+```
+
+## Most and Least Likely Games
+
+What games does the model think `r tidy_username` is **most likely to own** that are **not** in their collection?
+
+```{r not in collection but likely to own, warning=F, message=F}
+
+owned_resamples_table %>%
+  filter(Owned !='yes') %>%
+  slice_max(., order_by = `Pr(Owned)`, n=5, with_ties = F) %>%
+  flextable() %>%
+  flextable::autofit()
+
+```
+
+What games does the model think `r tidy_username` is **least likely to own** that **are** in their collection?
+
+```{r in collection least likely to own, warning=F, message=F}
+
+owned_resamples_table %>%
+  filter(Owned == 'yes') %>%
+  slice_min(., order_by = `Pr(Owned)`, n=5, with_ties = F) %>%
+  flextable() %>%
+  flextable::autofit() %>%
+  bg(., i = ~ Owned == 'yes',
+                   bg = 'deepskyblue1')
+
+```
+
+## Top Games by Year
+
+Top 25 games most likely to be owned by the user in each year, highlighting in blue the games that the user has owned.
+
+```{r top games from oos by year, echo=F, warning=F, message=F}
+
+# games played
+games_played = games_and_collection_data %>%
+        select(yearpublished, game_id, name, owned) %>%
+        gather("variable", "value",
+               -yearpublished, -game_id, -name) %>%
+        filter(value == 'yes') %>%
+        pull(name) %>%
+        unique()
+
+# create table by year
+year_table = owned_resamples %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        filter(yearpublished > (params$end_training_year-9)) %>%
+        group_by(yearpublished) %>%
+        slice_max(., order_by = prob, n=25, with_ties = F) %>%
+        mutate(username = tidy_username) %>%
+        select(username, yearpublished, name) %>%
+        pivot_wider(., id_cols = "username",
+              names_from = c("yearpublished"),
+              values_from = c("name")) %>%
+          unnest() %>%
+          select(-username) %>%
+          mutate(rank = row_number()) %>%
+          select(rank, everything())
+
+# get column names
+year_names = names(year_table[,-1])
+
+# get col funcs
+bg_picker <- scales::col_factor(
+    palette = "deepskyblue1",
+    na.color = "white",
+    ordered=F,
+    levels = games_played)
+
+# display table with colors
+year_table %>%
+  flextable() %>%
+  flextable::autofit() %>%
+  bg(., j = year_names,
+     bg = bg_picker) %>%
+  fontsize(size = 9, part = "all")
+
+
+```
+
+## Interactive Table
+
+This is an interactive table for the model's predictions for the training set (from resampling).
+
+```{r interactie table for oos preds, warning=F, messagge=F}
+
+owned_resamples_table %>%
+        arrange(desc(`Pr(Owned)`)) %>%
+        mutate(Rank = row_number()) %>%
+        select(Published, ID, Name, Rank, `Pr(Owned)`, Owned) %>%
+  #mutate(yearpublished = as.numeric(yearpublished)) %>%
+        DT::datatable(rownames=F)
+
+```
+
+# Validating the Model
+
+We'll validate the model by looking at its predictions for games published in `r params$end_training_year`. That is, how well did a model trained on a user's collection through `r params$end_training_year` perform in predicting games for the user in `r params$end_training_year `?
+
+## Model Assessment
+
+```{r examine performance on validation set, warning=F, message=F}
+
+owned_assess_validation = owned_validation_last_fits %>%
+        select(wflow_id, .metrics) %>%
+        unnest(.metrics) %>%
+        filter(.metric == 'roc_auc') %>%
+        mutate(wflow_id = tidy_model_func(wflow_id)) %>%
+        mutate(outcome = "owned",
+               username = tidy_username,
+               dataset = "validation",
+               method = wflow_id) %>%
+        select(username, outcome, dataset, method, .metric, .estimate) %>%
+        mutate_if(is.numeric, round, 3)
+
+# table
+owned_assess_validation %>%
+        arrange(desc(.estimate)) %>%
+        flextable() %>%
+        autofit()
+
+# plot roc
+p1 = owned_validation_last_fits %>%
+        select(wflow_id, .predictions) %>%
+        unnest() %>%
+        group_by(wflow_id) %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        arrange(.pred_yes) %>%
+        mutate(rank = row_number()) %>%
+        ggplot(., aes(x= rank,
+                      y = .pred_yes))+
+        geom_point(size = 0.5)+
+        geom_vline(data =  owned_validation_last_fits %>%
+                           select(wflow_id, .predictions) %>%
+                           unnest() %>%
+                           filter(wflow_id == 'full_glmnet') %>%
+                           
+                           group_by(wflow_id) %>%
+                           arrange(.pred_yes) %>%
+                           mutate(rank = row_number()) %>%
+                           filter(owned == 'yes'),
+                  aes(xintercept = rank),
+                 lwd = 0.5,
+                  alpha = 0.8,
+                  col = 'deepskyblue1')+
+        theme_phil()+
+        xlab("Game Rank (Lowest to Highest)")+
+        ylab("Pr(Owned)")+
+        ggtitle("Separation plot")+
+        theme(plot.title = element_text(size = 10))
+        # facet_wrap(wflow_id~.,
+        #            ncol =1)
+
+
+p2 = owned_validation_last_fits %>%
+        select(wflow_id, .predictions) %>%
+        unnest(.predictions) %>%
+        mutate(outcome = "owned") %>%
+                filter(wflow_id == 'full_glmnet') %>%
+        group_by(wflow_id) %>%
+        gain_curve(owned, .pred_yes, event_level = "second") %>%
+        ggplot(., aes(x=.percent_tested,
+                    #  color = wflow_id,
+                      y = .percent_found))+
+        geom_line()+
+        theme_phil()+
+        geom_abline(lty = 2, alpha = 0.5, color = "gray50", size = 1.2)+
+        ggtitle("Gain curve")+
+        theme(plot.title = element_text(size = 10))
+     #   scale_color_colorblind()
+
+
+# lift chart
+p3 = owned_validation_last_fits %>%
+        select(wflow_id, .predictions) %>%
+        unnest(.predictions) %>%
+        mutate(outcome = "owned") %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        group_by(wflow_id) %>%
+        lift_curve(owned, .pred_yes, event_level = "second") %>%
+        ggplot(., aes(x=.n,
+                  #    color = wflow_id,
+                      y = .lift))+
+        geom_line()+
+        theme_phil()+
+        ggtitle("Lift curve")+
+        theme(plot.title = element_text(size = 10))
+      #  scale_color_colorblind()
+
+
+patchwork = (p2 + p3) / p1
+
+patchwork + plot_annotation(
+  title = 'How well did model predict the validation set?',
+  subtitle = str_wrap(paste("Displaying a gain curve (left) and a lift curve (right) and separation plot (bottom) to illustrate the best performing model's performance in predicting games from", params$end_training_year), 120),
+  theme = theme(plot.subtitle = element_text(size =8)))
+  
+```
+
+## Top Games from Validation Set
+
+Table of top 50 games from `r params$end_training_year`, highlighting games that the user owns.
+
+```{r make table of validation predictions}
+
+owned_validation_probs = owned_validation_last_fits %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        select(wflow_id, .predictions) %>%
+        unnest(.predictions) %>%
+        select(.pred_yes, .row, owned) %>%
+        bind_cols(., games_validation %>% 
+                          select(-owned)) %>% 
+        select(.pred_yes, owned,name, game_id, yearpublished) %>%
+        rename(prob = .pred_yes) %>%
+        arrange(desc(prob)) %>%
+        mutate_if(is.numeric, round, 3) %>%
+        mutate_at(vars(c("yearpublished",
+                         "game_id")),
+                  ~ as.character(.)) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Name = name,
+               `Pr(Owned)` = prob,
+               Owned = owned) %>%
+        select(Published, ID, Name, `Pr(Owned)`, Owned) 
+
+owned_validation_probs %>%
+        head(50) %>%
+        flextable() %>%
+        autofit() %>%
+        bg(., i = ~ Owned == 'yes',
+                   bg = 'deepskyblue1')
+
+```
+
+# Predicting Upcoming Games
+
+We can then refit our model to the training and validation set in order to predict all upcoming games for the user.
+
+```{r refit model on the trin and validation to predict the test set, warning=F, message=F}
+
+owned_final_fits = owned_tuned %>%
+        filter(wflow_id == 'full_glmnet') %>%
+        mutate(best_tune = map(result,
+                               ~ select_best(.x, metric = "roc_auc"))) %>% 
+        mutate(last_fit = map2(.x = result,
+                               .y = best_tune,
+                              ~ .x %>% 
+                                      extract_workflow(.) %>%
+                                      finalize_workflow(., .y) %>%
+                                      last_fit(test_split, 
+                                               metrics = class_metrics))) %>%
+        select(wflow_id, best_tune, last_fit) %>%
+        unnest(last_fit)
+
+owned_upcoming_probs = owned_final_fits %>%
+        pluck(".predictions", 1) %>%
+        bind_cols(., games_test %>%
+                          select(-owned)) %>%
+        select(.pred_yes, owned, game_id, name, yearpublished) %>%
+        rename(prob = .pred_yes) %>%
+        arrange(desc(prob)) %>%
+                mutate_if(is.numeric, round, 3) %>%
+        mutate_at(vars(c("yearpublished",
+                         "game_id")),
+                  ~ as.character(.)) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Name = name,
+               `Pr(Owned)` = prob,
+               Owned = owned) %>%
+        select(Published, ID, Name, `Pr(Owned)`, Owned)
+
+```
+
+## Top Upcoming Games
+
+Examine the top 100 upcoming games, highlighting in blue ones the user already owns.
+
+```{r top games from preds, echo=F, warning=F, message=F}
+
+owned_upcoming_probs %>%
+        # left_join(., user_collection %>%
+        #                   mutate(ID = as.character(game_id)) %>%
+        #                   select(ID, preordered) %>%
+        #                   mutate(preordered = case_when(preordered == 1 ~ 'yes',
+        #                                                 TRUE ~ 'no')),
+        #           by = c("ID")) %>%
+        # mutate(Preordered = replace_na(preordered, "no")) %>%
+        # select(-preordered) %>%
+        mutate_if(is.numeric, round, 3) %>%
+        head(100) %>%
+        flextable() %>%
+        autofit() %>%
+        bg(., i = ~ Owned == 'yes',
+           #| Preordered == 'yes',
+                   bg = 'deepskyblue1')
+      #  set_caption(paste("Top Predicted Games for User, ", params$end_training_year+1, " and On", sep=""))
+
+```
+
+## Interactive Table of Upcoming Games
+
+```{r interactive preds, echo=F, warning=F, message=F}
+
+bind_rows(owned_upcoming_probs,
+          owned_validation_probs) %>%
+        arrange(desc(`Pr(Owned)`)) %>%
+        mutate_if(is.numeric, round, 3) %>%
+        DT::datatable()
+
+```
+
+```{r save workflows, warning=F, message=F, results = 'hide'}
+
+user_owned_workflow = owned_final_fits %>%
+        pluck(".workflow", 1)
+
+suppressWarnings({
+suppressMessages({
+save(user_owned_workflow,
+     file = here::here("user_workflows",  paste(tidy_username, "owned_workflow.Rds", sep="_")))
+})
+})
+
+gc()
+
+```
+
