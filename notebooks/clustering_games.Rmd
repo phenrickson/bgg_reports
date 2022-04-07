@@ -858,3 +858,351 @@ gc()
 
 Once we've computed the principal components using the different sets of features, we can get the distance between all observations in order to find each game's nearest neighbors.
 
+```{r loop over to find neighbors}
+
+# custom n.min function
+n_min_func <- function(row, n) {
+        neighbors = order(row)[1:n]
+        data.frame(neighbor = neighbors,
+                   dist = row[neighbors])
+}
+
+# get distances
+get_dist_func = function(input_data, select_method) {
+        
+        dist(input_data %>%
+                     select_if(is.numeric) %>%
+                     as.matrix(),
+             method=paste0(select_method)) %>%
+                as.matrix()
+        
+}
+
+# get neighbors from a distance matrix
+find_neighbors_func = function(input_dist, neighbors) {
+        apply(input_dist, 1, n_min_func, n = neighbors) %>%
+                        rbindlist(idcol = T) %>%
+                set_names(., c(".row", ".row_neighbor", "dist")) %>%
+                mutate(.row = as.integer(.row),
+                       .row_neighbor = as.integer(.row_neighbor)) %>%
+                filter(dist > 0)
+}
+
+# combine rotations, get distances, and then find neighbors
+neighbors_train = bind_rows(
+        pca_categories_rotation %>%
+                nest(data = everything()) %>%
+                mutate(type = "fundamentals, categories, mechanics"),
+        pca_mechanics_rotation %>%
+                nest(data = everything()) %>%
+                mutate(type = "fundamentals, mechanics")
+        ) %>%
+        mutate(rotation = map(data,
+                                      ~ .x %>% 
+                                              select(starts_with("PC")))) %>%
+        select(type, rotation) %>%
+        mutate(dist = map(rotation,
+                          ~ dist(.x %>%
+                                         select(one_of(paste("PC", seq(1, 20), sep=""))) %>%
+                                         as.matrix() %>%
+                                         as.data.frame(),
+                                 method = "manhattan"))) %>%
+        mutate(neighbors = map(dist,
+                               ~ find_neighbors_func(.x,
+                                                     neighbors = 26)))
+        
+```
+
+
+```{r examine neighbors, warning=F, message=F}
+
+# 
+samp = neighbors_train %>%
+        select(type, neighbors) %>%
+        unnest() %>%
+        left_join(., games_train %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name),
+                  by = c(".row")) %>% # get game id
+        left_join(., games_train %>%
+                          mutate(.row_neighbor = row_number()) %>%
+                          rename(neighbor_id = game_id,
+                                 neighbor_name = name) %>%
+                          select(.row_neighbor, neighbor_id, neighbor_name),
+                  by = c(".row_neighbor")) %>%
+        select(type, game_id, name, neighbor_id, neighbor_name, dist) %>%
+        group_by(type) %>%
+        arrange(type, dist) %>%
+        group_by(type, game_id) %>%
+        mutate(rank = row_number()) %>%
+        filter(name == 'Spirit Island') %>%
+        filter(rank < 26) %>%
+        ungroup() %>%
+        mutate_if(is.numeric, round, 2)
+
+samp
+
+```
+
+
+```{r remake plot func}
+
+# redo plot
+place_game_func2 = function(rotation,
+                           input_pcs,
+                           input_game_id)
+{
+        # create vector
+        number_pcs = paste("PC", seq(1, input_pcs), sep="")
+
+        # make initial plot
+        a = rotation %>%
+        select(game_id, name,
+               all_of(number_pcs)) %>%
+        gather("component", "value",
+               -game_id, -name) %>%
+        mutate(component = factor(component,
+                                  levels = rev(number_pcs))) %>%
+        ggplot(., aes(y=component,
+                      x=value))+
+        geom_density_ridges(scale = 0.9,
+                            color = NA,
+                            alpha = 0.75)+
+        theme_phil()+
+                geom_vline(xintercept =0,
+                           linetype = 'dotted')+
+                coord_cartesian(xlim = c(-15,15))+
+                theme(axis.title.x=element_blank(),
+                      axis.text.x=element_blank(),
+                      axis.ticks.x=element_blank())
+        
+        # now overlay lines
+        game_dat = rotation %>%
+                           select(game_id, name, all_of(number_pcs)) %>%
+                       gather("component", "value",
+               -game_id, -name) %>%
+                       mutate(component = factor(component,
+                                  levels = rev(number_pcs))) %>%
+                       filter(game_id %in% input_game_id)
+        
+        # plot vertical lines
+        b = a + geom_segment(data = game_dat,
+               aes(x=value,
+                   xend = value,
+                   y = as.numeric(component),
+                   color = name,
+                   yend=as.numeric(component)+0.5),
+               size = 1.1)+
+                scale_color_viridis_d(option = "A")
+        
+        # plot a smooth line through
+        c = b + geom_path(data = game_dat,
+               aes(x=value,
+                   y = as.numeric(component)+0.5,
+                   color = name),
+               alpha = 0.5,
+            #   stat = "smooth",
+               lwd = 0.8)
+   #     ggtitle(paste(game_dat$name))
+
+        suppressMessages({
+                print(c)
+        })
+        
+}
+
+
+
+
+tile_plot = function(rotation,
+                           input_pcs,
+                           input_game_id) {
+        
+        # create vector
+        number_pcs = paste("PC", seq(1, input_pcs), sep="")
+
+        # make initial plot
+        rotation %>%
+                filter(game_id %in% input_game_id) %>%
+                mutate(game_id = factor(game_id,
+                                        levels = rev(input_game_id))) %>%
+                select(game_id, name,
+                       all_of(number_pcs)) %>%
+                gather("component", "value",
+                       -game_id, -name) %>%
+                mutate(component = factor(component,
+                                          levels = number_pcs)) %>%
+                ggplot(., aes(y=game_id,
+                              fill = value,
+                              x=component))+
+                geom_tile()+
+                scale_fill_gradient2(low = "blue1",
+                                     mid = "white",
+                                     high = "red",
+                                     limits = c(-8, 8),
+                                     oob = scales::squish)+
+                # scale_fill_viridis(option = "B",
+                #                    scale = )+
+                theme_phil()
+        
+        
+                           }
+
+```
+
+
+
+```{r examine a game, warning=F, message=F, fig.width=10, fig.height=8}
+
+# pull ids
+samp_ids = samp %>%
+        filter(rank < 6) %>%
+        select(type, game_id, neighbor_id) %>%
+        gather("variable", "value",
+               -type)
+
+
+tile_plot(pca_categories_rotation,
+          20,
+           input_game_id = samp_ids %>%
+                        filter(type == 'fundamentals, categories, mechanics') %>%
+                        pull(value) %>%
+                        unique())
+# plot each
+place_game_func2(pca_categories_rotation,
+                20,
+                input_game_id = samp_ids %>%
+                        filter(type == 'fundamentals, categories, mechanics') %>%
+                        pull(value) %>%
+                        unique() %>%
+                        head(2))
+
+# plot each
+place_game_func2(pca_mechanics_rotation,
+                10,
+                input_game_id = samp_ids %>%
+                        filter(type == 'fundamentals, mechanics') %>%
+                        pull(value) %>%
+                        unique())
+
+```
+
+
+```{r combine rotations into one df, warning=F, message=F}
+
+neighbors_train = bind_rows(
+        pca_categories_rotation %>%
+                nest() %>%
+                mutate(type = "fundamentals, categories, mechanics") %>%
+                mutate(rotation = map(data,
+                                      ~ .x %>% select(starts_with("PC"))))
+        # pca_mechanics_rotation %>%
+        #         nest() %>%
+        #         mutate(type = "fundamentals, mechanics") %>%
+        #         mutate(rotation = map(data,
+        #                               ~ .x %>% select(starts_with("PC"))))
+) %>%
+        mutate(pca_dist_euclidean = map(rotation, 
+                        ~ dist(.x %>%
+                                 select(PC1:PC10) %>%
+                                 as.matrix(), method="euclidean") %>%
+                             as.matrix() %>%
+                             as.data.frame())) %>%
+        mutate(obs_dist_euclidean = map(pca_dist_euclidean, ~ .x %>%
+                             rownames_to_column(".row") %>%
+                             gather('closest','dist',-.row) %>%
+                             filter(dist > 0) %>%
+                             filter(!is.na(dist)) %>% 
+                             group_by(.row) %>% 
+                             arrange(dist) %>% 
+                             slice_min(dist, n=100, with_ties = F) %>%
+                             mutate(dist_rank=row_number())))
+
+%>%
+        mutate(neighbors_euclidean = map2(obs_dist_euclidean, data,
+                      ~ left_join(.x, .y %>%
+                                    mutate(.row = as.character(row_number())), 
+                                  by = c(".row")) %>%
+                        select(.row, game_id, name, closest, dist, dist_rank) %>% 
+                        left_join(., .y %>%
+                                    mutate(.row = as.character(row_number())) %>%
+                                    rename(neighbor_row = .row,
+                                           neighbor_game_id = game_id,
+                                           neighbor_name = name),
+                                  by = c("closest" = "neighbor_row"))))
+
+```
+
+
+
+```{r}
+
+
+select(dataset, neighbors_euclidean) %>%
+        unnest() %>%
+        filter(game_id %in% sample_ids) %>%
+        select(game_id, name, closest, dist, dist_rank, neighbor_name) %>%
+        mutate(type = 'euclidean') %>%
+        select(type, everything()) %>%
+        bind_rows(., bar %>%
+        select(dataset, neighbors_manhattan) %>%
+        unnest() %>%
+                filter(game_id %in% sample_ids) %>%
+        select(game_id, name, closest, dist, dist_rank, neighbor_name) %>%
+        mutate(type = 'manhattan') %>%
+        select(type, everything()))
+
+```
+
+
+For clustering, we can make use of K means to look for clusters.
+
+```{r build workflow sets}
+
+kclusts <- 
+  tibble(k = 1:9) %>%
+  mutate(
+    kclust = map(k, ~kmeans(points, .x)),
+    tidied = map(kclust, tidy),
+    glanced = map(kclust, glance),
+    augmented = map(kclust, augment, points)
+  )
+
+# pca sets
+average_set <-
+        workflow_set(
+                preproc = list(
+                        normalize_all = recipe_average %>%
+                              step_normalize(all_predictors()),
+                        pca_all = recipe_average %>%
+                                step_normalize(all_predictors()) %>%
+                                step_pca(all_numeric_predictors()),
+                        normalize_no_artistdesigner = recipe_average %>%
+                                step_rm(starts_with("artist"),
+                                        starts_with("designer")) %>%
+                                step_normalize(all_predictors()),
+                        normalize_no_publisher = recipe_average %>%
+                                step_rm(starts_with("publisher")) %>%
+                                step_normalize(all_predictors()),
+                        normalize_no_categorical = recipe_average %>%
+                                update_role("playingtime",
+                                          new_role = "id") %>%
+                                step_rm(starts_with("publisher"),
+                                        starts_with("category"),
+                                        starts_with("mechanic"),
+                                        starts_with("artist"),
+                                        starts_with("designer"),
+                                        starts_with("family")) %>%
+                                step_normalize(all_predictors()),
+                        full = recipe_average
+                        ),
+                models = list(glmnet = glmnet_reg_mod,
+                              knn = knn_reg_mod,
+                              stan = stan_reg_mod,
+                              cart = cart_reg_mod,
+                              xgbTree = xgbTree_reg_mod),
+                cross = T
+        ) 
+
+```
+
