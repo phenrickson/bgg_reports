@@ -72,6 +72,8 @@ users_passed = test_collections %>%
         sample_n(25) %>%
         pull(username)
 
+users_passed = "ZeeGarcia"
+
 # run users that passed through list
 foreach(i = 1:length(users_passed),
         .errorhandling = 'pass') %do% {
