@@ -101,6 +101,10 @@ my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of"
 game_types= DBI::dbGetQuery(bigquerycon, 
                               'SELECT * FROM bgg.api_game_categories')
 
+# also pull the current list of games from the github account
+source(here::here("functions/get_bgg_data_from_github.R"))
+bgg_today = get_bgg_data_from_github(Sys.Date())
+
 ```
 
 # What is this Analysis? {-}
@@ -781,7 +785,7 @@ publisher_list = c(51,
                    3,
                    538,
                    52,
-                   8923,
+              #     8923, drop for now, seems to be also an outcome rather than the initial publisher
                    17,
                    5,
                    3320,
@@ -802,6 +806,7 @@ publisher_list = c(51,
                    25842,
                    140,
             23202,
+            30958,
                    28072)
 
 # list of selected publishers
@@ -905,12 +910,14 @@ games_full = games_model %>%
 # filter our training set to only games with at least n ratings
 games_train = games_full %>%
         filter(dataset == 'train') %>%
-        filter(usersrated >= params$min_ratings)
+        filter(usersrated >= params$min_ratings) %>%
+        filter(game_id %in% (bgg_today$game_id)) # filter to include only games that are present in the list of released games from beefsack on github
+        
 
 games_validation = games_full %>%
         filter(dataset == 'validation') %>%
-        filter(usersrated >= params$min_ratings)
-        
+        filter(usersrated >= params$min_ratings) %>%
+        filter(game_id %in% (bgg_today$game_id)) # filter to include only games that are present in the list of released games from beefsack on github
 
 games_test =  games_full %>%
         filter(dataset == 'test')
@@ -1244,7 +1251,7 @@ base_recipe = recipe(x = games_train) %>%
 
 ```
 
-```{r save the base recipe, eval=F}
+```{r save the base recipe, eval=T}
 
 # save the base recipe
 readr::write_rds(base_recipe,
@@ -1381,6 +1388,12 @@ cart_reg_mod <-
    set_engine("rpart") %>% 
    set_mode("regression")
 
+cart_grid = grid_regular(
+        cost_complexity(),
+        min_n(),
+        levels = c(6,4)
+)
+
 # knn
 knn_reg_mod <- 
    nearest_neighbor(neighbors = tune(), weight_func = tune()) %>% 
@@ -1422,7 +1435,7 @@ average_set <-
                         full = recipe_average
                         ),
                 models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
+                       #       knn = knn_reg_mod,
                               stan = stan_reg_mod,
                               cart = cart_reg_mod,
                               xgbTree = xgbTree_reg_mod),
@@ -1431,7 +1444,7 @@ average_set <-
        # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
         filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
         filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
+  #      filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
         filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
 
 
@@ -1464,7 +1477,7 @@ averageweight_set <-
                         full = recipe_averageweight
                         ),
                 models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
+                  #            knn = knn_reg_mod,
                               stan = stan_reg_mod,
                               cart = cart_reg_mod,
                               xgbTree = xgbTree_reg_mod),
@@ -1473,7 +1486,7 @@ averageweight_set <-
        # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
         filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
         filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
+ #       filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
         filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
 
 # usersrated
@@ -1505,7 +1518,7 @@ usersrated_set <-
                         full = recipe_usersrated
                         ),
                 models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
+                   #           knn = knn_reg_mod,
                               stan = stan_reg_mod,
                               cart = cart_reg_mod,
                               xgbTree = xgbTree_reg_mod),
@@ -1514,7 +1527,7 @@ usersrated_set <-
        # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
         filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
         filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
+    #   filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
         filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
 
 
@@ -1547,7 +1560,7 @@ bayesaverage_set <-
                         full = recipe_bayesaverage
                         ),
                 models = list(glmnet = glmnet_reg_mod,
-                              knn = knn_reg_mod,
+                      #        knn = knn_reg_mod,
                               stan = stan_reg_mod,
                               cart = cart_reg_mod,
                               xgbTree = xgbTree_reg_mod),
@@ -1556,7 +1569,7 @@ bayesaverage_set <-
        # filter(!(grepl("normalize", wflow_id) & grepl("_xgbTree|_cart", wflow_id))) %>% # remove workflows with normalization and xgbTree or cart
         filter(!(!grepl("normalize", wflow_id) & grepl("_glmnet", wflow_id))) %>% # keep workflows with normalization for glmnet
         filter(!(!grepl("full", wflow_id) & grepl("_xgbTree|cart", wflow_id))) %>% # only train one boosted trees and cart on everything
-        filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
+      #  filter(!(!grepl("pca", wflow_id) & grepl("_knn", wflow_id))) %>% # only keep the knn with pca
         filter(!(!grepl("normalize_all", wflow_id) & grepl("_stan", wflow_id))) # will only fit a linear model with stan to everything
 
 
@@ -1600,9 +1613,14 @@ set.seed(1999)
 # train average
 average_tuned <- 
         average_set %>% 
+        option_add(grid = glmnet_grid, id = "normalize_all_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_artistdesigner_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_publisher_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_categorical_glmnet") %>%
+        option_add(grid = cart_grid, id = "full_cart") %>%
+        option_add(grid = xgbTree_grid, id = "full_xgbTree") %>%
         workflow_map("tune_grid", 
                 resamples = train_folds, 
-                grid =10,
                 control = keep_pred,
                 metrics = reg_metrics, 
                 verbose = TRUE)
@@ -1610,10 +1628,15 @@ average_tuned <-
 set.seed(1999)
 # train averageweight
 averageweight_tuned <- 
-   averageweight_set %>% 
-   workflow_map("tune_grid", 
+        averageweight_set %>% 
+        option_add(grid = glmnet_grid, id = "normalize_all_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_artistdesigner_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_publisher_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_categorical_glmnet") %>%
+        option_add(grid = cart_grid, id = "full_cart") %>%
+        option_add(grid = xgbTree_grid, id = "full_xgbTree") %>%
+        workflow_map("tune_grid", 
                 resamples = train_folds, 
-                grid =10,
                 control = keep_pred,
                 metrics = reg_metrics, 
                 verbose = TRUE)
@@ -1621,21 +1644,32 @@ averageweight_tuned <-
 set.seed(1999)
 # train usersrated
 usersrated_tuned <- 
-   usersrated_set %>% 
-   workflow_map("tune_grid", 
+        usersrated_set %>% 
+        option_add(grid = glmnet_grid, id = "normalize_all_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_artistdesigner_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_publisher_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_categorical_glmnet") %>%
+        option_add(grid = cart_grid, id = "full_cart") %>%
+        option_add(grid = xgbTree_grid, id = "full_xgbTree") %>%
+        workflow_map("tune_grid", 
                 resamples = train_folds, 
-                grid =10,
                 control = keep_pred,
                 metrics = reg_metrics, 
                 verbose = TRUE)
 
+
 set.seed(1999)
 # train bayesaverage
 bayesaverage_tuned <- 
-   bayesaverage_set %>% 
-   workflow_map("tune_grid", 
+        bayesaverage_set %>% 
+        option_add(grid = glmnet_grid, id = "normalize_all_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_artistdesigner_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_publisher_glmnet") %>%
+        option_add(grid = glmnet_grid, id = "normalize_no_categorical_glmnet") %>%
+        option_add(grid = cart_grid, id = "full_cart") %>%
+        option_add(grid = xgbTree_grid, id = "full_xgbTree") %>%
+        workflow_map("tune_grid", 
                 resamples = train_folds, 
-                grid =10,
                 control = keep_pred,
                 metrics = reg_metrics, 
                 verbose = TRUE)
@@ -1643,7 +1677,7 @@ bayesaverage_tuned <-
 ```
 
 ```{r save the tuned results so we can rerun this workflow without it taking forever}
-
+# 
 # # pull tuning results into one place
 # bgg_outcomes_tuning_results = mget(ls(pattern = "_tuned"))
 # 
@@ -1677,58 +1711,11 @@ bgg_outcomes_last_fits = map(
                 select(wflow_id, best_tune, last_fit)) %>%
         rbindlist(idcol = T)
 
-# # average
-# average_last_fit = average_tuned %>%
-#         mutate(outcome = 'average') %>%
-# 
-# 
-# # averageweight
-# averageweight_last_fit = averageweight_tuned %>%
-#         mutate(outcome = 'averageweight') %>%
-#         mutate(best_tune = map(result,
-#                                ~ select_best(.x, metric = "rmse"))) %>% 
-#         mutate(last_fit = map2(.x = result,
-#                                .y = best_tune,
-#                               ~ .x %>% 
-#                                       extract_workflow(.) %>%
-#                                       finalize_workflow(., .y) %>%
-#                                       last_fit(validation_split, 
-#                                                metrics = reg_metrics))) %>%
-#         select(wflow_id, outcome, best_tune, last_fit)
-# 
-# # usersrated
-# usersrated_last_fit = usersrated_tuned %>%
-#         mutate(outcome = 'usersrated') %>%
-#         mutate(best_tune = map(result,
-#                                ~ select_best(.x, metric = "rmse"))) %>% 
-#         mutate(last_fit = map2(.x = result,
-#                                .y = best_tune,
-#                               ~ .x %>% 
-#                                       extract_workflow(.) %>%
-#                                       finalize_workflow(., .y) %>%
-#                                       last_fit(validation_split, 
-#                                                metrics = reg_metrics))) %>%
-#         select(wflow_id, outcome, best_tune, last_fit)
-# 
-# # bayesaverage
-# bayesaverage_last_fit = bayesaverage_tuned %>%
-#         mutate(outcome = 'bayesaverage') %>%
-#         mutate(best_tune = map(result,
-#                                ~ select_best(.x, metric = "rmse"))) %>% 
-#         mutate(last_fit = map2(.x = result,
-#                                .y = best_tune,
-#                               ~ .x %>% 
-#                                       extract_workflow(.) %>%
-#                                       finalize_workflow(., .y) %>%
-#                                       last_fit(validation_split, 
-#                                                metrics = reg_metrics))) %>%
-#         select(wflow_id, outcome, best_tune, last_fit)
-
 ```
 
 ## Model Performance (via Resampling)
 
-First, we can look at how the different workflows fared in resampling on the training set for each outcome. We'll look at the root mean squared error for each outcome and each model. We have a variety of different linear models in there, all with sightly different sets of features which we can compare more closely in a second, but the biggest takeawayfrom our first graph is that boosted trees performed the best across each outcome, with the linear models coming in second.
+First, we can look at how the different workflows fared in resampling on the training set for each outcome. We'll look at the root mean squared error for each outcome and each model. We have a variety of different linear models in there, all with sightly different sets of features which we can compare more closely in a second, but the biggest takeaway from our first graph is that boosted trees performed the best across each outcome, with the penalized linear models with the most features coming in second.
 
 ```{r outcomes rmse by workflow}
 
@@ -1840,7 +1827,7 @@ training_preds = map(bgg_outcomes_tuning_results,
 # average plot
 training_preds %>%
         filter(variable == 'average') %>%
-        mutate(outcome = paste("outcome:", variable, sep="")) %>%
+        mutate(outcome = paste("outcome: ", variable, sep="")) %>%
         left_join(.,
                   games_train %>%
                           mutate(.row = row_number()) %>%
@@ -1873,7 +1860,7 @@ training_preds %>%
 # average plot
 training_preds %>%
         filter(variable == 'log_usersrated') %>%
-        mutate(outcome = paste("outcome:", variable, sep="")) %>%
+        mutate(outcome = paste("outcome: ", variable, sep="")) %>%
         left_join(.,
                   games_train %>%
                           mutate(.row = row_number()) %>%
@@ -1911,7 +1898,7 @@ training_preds %>%
 # average plot
 training_preds %>%
         filter(variable == 'averageweight') %>%
-        mutate(outcome = paste("outcome:", variable, sep="")) %>%
+        mutate(outcome = paste("outcome: ", variable, sep="")) %>%
         left_join(.,
                   games_train %>%
                           mutate(.row = row_number()) %>%
@@ -2045,6 +2032,8 @@ training_preds %>%
 #         plotly::layout(hovermode = "x")
 #         
 ```
+
+Wargames and simulation games tend to dominate the highest BGG averages; these games tend to have a lower number of ratings but a high average due to what I would guess is a pretty passionate fanbase.
 
 ## Inference 
 
@@ -2270,7 +2259,7 @@ top_vars %>%
                              oob = scales::squish)+
         guides(color = guide_colorbar(barwidth=10,
                                      barheight = 0.5,
-                                     title = "Shapley Value",
+                                     title = "                   Shapley Values",
                                      title.position = 'top'))+
         my_caption+
         geom_vline(xintercept = 0,
@@ -2280,7 +2269,8 @@ top_vars %>%
                    scales="free",
                    ncol=2)+
         scale_y_reordered()
- 
+
+
 
 ```
 
@@ -2759,17 +2749,17 @@ print(valid_bayesaverage %>%
 )
 })
 
-# scatter plot
-valid_bayesaverage %>%
-        ggplot(., aes(x=.pred,
-                      y=bayesaverage))+
-        geom_point(alpha = 0.5)+
-        theme_bw(8)+
-        facet_wrap(variable~.,
-                   ncol =3)+
-        geom_abline(slope = 1,
-                    intercept = 0)+
-        stat_cor(p.accuracy = .01)
+# # scatter plot
+# valid_bayesaverage %>%
+#         ggplot(., aes(x=.pred,
+#                       y=bayesaverage))+
+#         geom_point(alpha = 0.5)+
+#         theme_bw(8)+
+#         facet_wrap(variable~.,
+#                    ncol =3)+
+#         geom_abline(slope = 1,
+#                     intercept = 0)+
+#         stat_cor(p.accuracy = .01)
 
 
 
@@ -2777,28 +2767,6 @@ valid_bayesaverage %>%
 
 
 ## Comparing Models
-
-If we plot the predictions from the models for a sample of games, we can get a sense of where they agree and where they consistently miss.
-
-```{r evaluate, warning=F, message=F, fig.height=15, fig.width=10}
-
-set.seed(1999)
-valid_bayesaverage %>%
-        filter(game_id %in% (games_validation %>%
-                       sample_n(150) %>%
-                       pull(game_id))) %>%
-        ggplot(., aes(y=reorder(name, .pred)))+
-        geom_point(aes(x=.pred,
-                       color = variable),
-                   shape = 1)+
-        geom_point(aes(x=bayesaverage),
-               shape = 20,
-               color = "black")+
-        theme_bw(8)+
-        scale_color_viridis_d()+
-        ylab("game")
-
-```
 
 What were the top games in the validation set according to the boosted trees models and the bayesian linear models?
 
@@ -2815,32 +2783,6 @@ valid_bayesaverage %>%
 ```
 
 Just flipping through the results, the boosted trees were much less favorable towards Wingspan, which was the biggest hit of 2019, than the linear models.
-
-I wonder how a simple ensemble, giving 50% weight to each of the indirect models, does by comparison.
-
-```{r valid predictions with the ensemble}
-
-set.seed(1999)
-valid_bayesaverage %>%
-        spread(variable, .pred) %>%
-        select(game_id, name, bayesaverage, contains('indirect_full_xgbTree'), contains("indirect_full_stan")) %>%
-        rename(indirect_xgbTree = indirect_full_xgbTree,
-               indirect_stan = indirect_full_stan) %>%
-        mutate(indirect_ensemble = (indirect_xgbTree + indirect_stan)/2) %>%
-        gather("variable", ".pred",
-               -bayesaverage,
-               -game_id,
-               -name) %>%
-        group_by(variable) %>%
-        reg_metrics(truth = bayesaverage,
-                    estimate = .pred) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        spread(.metric, .estimate) %>%
-        flextable() %>%
-        autofit()
-
-```
-
 
 ## Additional Games in Validation Set
 
@@ -2869,29 +2811,6 @@ preds_validation_additional =  bgg_outcomes_last_fits %>%
 #                                               games_full %>% 
 #                                                     filter(yearpublished %in% (games_validation %>% pull(yearpublished) %>% unique())) %>%
 #                                                     filter(usersrated < 30))))
-
-```
-
-
-```{r pivot to look at specific predictions, fig.height=8, fig.width=10, warning=F}
-
-preds_validation_additional %>%
-        select(outcome, wflow_id, preds) %>%
-        unnest() %>%
-        spread(outcome, .pred) %>%
-        mutate(wflow_id = gsub("all", "full", gsub("normalize_", "", wflow_id))) %>%
-        mutate(highlight = case_when(exp(usersrated) > 1000 ~ name)) %>%
-        ggplot(., aes(x=exp(usersrated),
-                      label = highlight,
-                      y=wflow_id))+
-        geom_point(alpha = 0.08,
-                   position = jitter_pos)+
-        geom_text(check_overlap=T,
-                  size = 3,
-                  position = jitter_pos,
-                  vjust=-1)+
-        scale_x_log10()+
-        theme_bw(8)
 
 ```
 
@@ -2943,7 +2862,7 @@ preds_validation_additional %>%
 
 Some of these are quite interesting: I cannot find anything about Solar Ocean: Colonies, but I can totally see why a model would think it's going to be popular, as a what looks like a fairly ambitious space 4x game. Fate of Venterra looks like a Kickstarter that didn't reach its funding mark? Bake & Sale is a web published roll and write. Exodus Chronicles also looks like a Kickstarter that didn't fund.
 
-Man, I would really like a second eye to review some of these. This is rather interesting.
+Man, I would really like a second eye to review some of these. 
 
 # Predicting Upcoming Games
 
@@ -2951,18 +2870,28 @@ We'll keep our best performing models, store their workflows, and then predict t
 
 ```{r predict upcoming games using models trained on previous two sets, warning=F, message=F}
 
-bgg_outcomes_final_workflows = bgg_outcomes_last_fits %>% 
-        select(.id, wflow_id, last_fit) %>%
-        unnest() %>%
-        mutate(id = "train/validation split") %>%
-        mutate(outcome = gsub("_tuned", "", .id)) %>%
-        select(outcome, wflow_id, id, splits, .workflow) %>%
-        filter(grepl("xgbTree|stan", wflow_id))
+bgg_outcomes_final_workflows = bgg_outcomes_last_fits %>%
+        filter(grepl("xgbTree|stan", wflow_id)) %>%
+        select(.id, wflow_id, best_tune, last_fit) %>%
+        mutate(.workflow = map2(.x = last_fit,
+                               .y = best_tune,
+                              ~ .x %>% 
+                                      extract_workflow(.) %>%
+                                      finalize_workflow(., .y) %>%
+                                      fit(bind_rows(games_train,
+                                                    games_validation)))) %>%
+        select(.id, wflow_id, best_tune, .workflow) %>%
+        left_join(., bgg_outcomes_last_fits %>% 
+                          filter(grepl("xgbTree", wflow_id)) %>% 
+                          unnest() %>% 
+                          select(.id, wflow_id, splits),
+                  by = c(".id", "wflow_id")) %>%
+        mutate(outcome = gsub("_tuned", "", .id))
 
-# # save locally
-# readr::write_rds(bgg_outcomes_final_workflows,
-#                  file = here::here("models", "repository", paste("bgg_outcomes_final_workflows_", Sys.Date(), ".Rds", sep="")))
-#         
+# save locally
+readr::write_rds(bgg_outcomes_final_workflows,
+                 file = here::here("models", "repository", paste("bgg_outcomes_final_workflows_", Sys.Date(), ".Rds", sep="")))
+
 ```
 
 ```{r estimate the averageweight}
@@ -3011,7 +2940,7 @@ preds_test_tidied = preds_test %>%
         select(outcome, wflow_id, preds) %>%
         unnest() %>%
         mutate(wflow_id = gsub("full_", "", gsub("all_", "", gsub("normalize_", "", wflow_id)))) %>%
-        mutate(.pred = case_when(outcome == 'usersrated' ~ plyr::round_any(exp(.pred), 50),
+        mutate(.pred = case_when(outcome == 'usersrated' ~ plyr::round_any(exp(.pred), 100, ceiling),
                                  TRUE ~ .pred)) %>%
         pivot_wider(names_from = c("outcome", "wflow_id"),
                     values_from = ".pred") %>%
@@ -3028,7 +2957,7 @@ preds_test_tidied = preds_test %>%
 
 ```
 
-## Highest Expected Average Rating
+## Highest Expected User Ratings
 
 What upcoming games do the models expect have the most user ratings?
 
@@ -3046,19 +2975,20 @@ preds_test_tidied %>%
                                  usersrated),
                   by = c("game_id", "name")) %>%
         filter(bayesaverage > 0) %>%
+   #     rename(pred_xgbTree = usersrated_xgbTree) %>%
         rename(pred_stan = usersrated_stan,
                pred_xgbTree = usersrated_xgbTree) %>%
         arrange(desc(pred_xgbTree)) %>%
-        mutate(estimated = pred_xgbTree) %>%
+ #       mutate(estimated = pred_xgbTree) %>%
        # select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>%
-        select(game_id, name, yearpublished, usersrated, estimated) %>%
+        select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>%
         DT::datatable()
 
 ```
 
-## Highest Expected User Ratings
+## Highest Expected Average
 
-What upcoming games are expected to be the most popular (ie, have the most ratings)?
+What upcoming games are expected to be have the highest average rating?
 
 ```{r upcoming game ratings for user atings}
 
@@ -3077,9 +3007,10 @@ preds_test_tidied %>%
         rename(pred_stan = average_stan,
                pred_xgbTree = average_xgbTree) %>%
         arrange(desc(pred_xgbTree)) %>%
-        mutate(estimated = round(pred_xgbTree, 2)) %>%
-       # select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>%
-        select(game_id, name, yearpublished, average, estimated) %>%
+    #    mutate(estimated = round(pred_xgbTree, 2)) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(game_id, name, yearpublished, average, pred_stan, pred_xgbTree) %>%
+       # select(game_id, name, yearpublished, average, pred_stan, pred_xgbTree) %>%
         DT::datatable()
 
 
@@ -3103,14 +3034,14 @@ preds_test_tidied %>%
                                  bayesaverage),
                   by = c("game_id", "name")) %>%
         filter(bayesaverage > 0) %>%
-        rename(pred_stan = bayesaverage_stan,
-               pred_xgbTree = bayesaverage_xgbTree) %>%
-        arrange(desc(pred_xgbTree)) %>%
-        mutate(estimated_direct = pred_xgbTree,
-               estimated_indirect = bayesaverage_indirect_xgbTree) %>%
+     #   rename(pred_xgbTree = bayesaverage_xgbTree) %>%
+        rename(pred_stan = bayesaverage_indirect_stan,
+               pred_xgbTree_direct = bayesaverage_xgbTree,
+               pred_xgbTree_indirect = bayesaverage_indirect_xgbTree) %>%
+        arrange(desc(pred_xgbTree_direct)) %>%
         mutate_if(is.numeric, round, 2) %>%
        # select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>%
-        select(game_id, name, yearpublished, bayesaverage, estimated_direct, estimated_indirect) %>%
+        select(game_id, name, yearpublished, bayesaverage, pred_stan, pred_xgbTree_direct, pred_xgbTree_indirect) %>%
         DT::datatable()
 
 ```
@@ -3153,7 +3084,7 @@ foo$plot
 
 ```
 
-Now this is interesting. The model thought Ark Nova would be highly rated and pretty popular (around 800 user ratings) partly due to the fact that it is a recent release with a lot of mechanics. That said, the model is nowhere near as keen on it as the BGG community has turned out to be. Part of the reason for this is the model estimated it to be slightly less complex than the community has found it (3.45 vs 3.7). But the model also tended to penalize it slightly for having open drafting, variable player powers, and animals.
+Now this is interesting. The model thought Ark Nova would be highly rated and pretty popular (around 3000 user ratings) partly due to the fact that it is a recent release with a lot of mechanics as well as being published by Capstone games. That said, the model is nowhere near as keen on it as the BGG community has turned out to be. Part of the reason for this is the model estimated it to be slightly less complex than the community has found it (3.45 vs 3.7). But the model also tended to penalize it slightly for having open drafting, variable player powers, and animals.
 
 Interesting. On some level, I think this can highlight the limitations of the modeling approach described here. Particularly with boosted trees, if a game comes out with a rarely or never before seen combination of mechanics, the model likely won't have much to go on in terms of determing whether that combination of mechanics is 'good'. If a game comes out of nowhere with a package that is greater than the sum of its parts, I would doubt the model is going to be great at finding it.
 
@@ -3170,5 +3101,4 @@ foo$plot
 
 ```
 
-Looking at the model's estimates for usersrated, for instance, the model lowered its estimate for usersrated for Wingspan due to the combination of educational, dice rolling, and open drafting mechanics. Based on the data it had seen at the time, I'm not surprised that the model didn't think this would be a smash hit - nothing quite like Wingspan had ever come before it.
-
+The model estimated the averageweight of the game to be lower than the BGG community found it, and part of the reason for this is because it is educational and has animals. A lower estimated averageweight then leads to a lower average rating. Similarly, looking at the estimates for usersrated,, the model lowered its estimate for Wingspan due to the combination of dice rolling and open drafting mechanics. Based on the data it had seen at the time, I'm not surprised that the model didn't think this would be a smash hit - nothing quite like Wingspan had ever come before it.

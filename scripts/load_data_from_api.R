@@ -53,7 +53,7 @@ bgg_ids = all_game_ids %>%
 source(here::here("functions/get_bgg_data_from_api.R"))
         
 # create batches of n size
-n = 400
+n = 500
 batches = split(bgg_ids, ceiling(seq_along(bgg_ids)/n))
 
 batches_returned = foreach(b = 1:length(batches),
@@ -125,43 +125,43 @@ check_again = data.frame(length = lengths(batches_returned),
 assertthat::are_equal(length(batches_returned),
                       check_again)
 
-# get last problem batch
-# batches with prpblems
-problems_again = data.frame(length = lengths(batches_returned),
-                            batch = seq(batches_returned)) %>%
-        filter(length !=9) %>%
-        pull(batch)
-
-# rerun problem batches
-batches_problems_again = foreach(b = 1:length(problems_again),
-                           .errorhandling = 'pass') %do% {
-                                   
-                                   # push batch 
-                                   out = get_bgg_api_data(batches[[problems_again[b]]][-120])
-                                   
-                                   # pause to avoid taxing the API
-                                   Sys.sleep(20)
-                                   
-                                   # print
-                                   #  print(paste("batch", b, "of", length(batches), "complete"))
-                                   cat(paste("batch", b, "of", length(problems_again), "complete"), sep="\n")
-                                   
-                                   # return
-                                   out
-                                   
-                           }
-
-# check again, again
-for (i in 1:length(problems_again)) {
-        batches_returned[[problems_again[i]]] = batches_problems_again[[i]]
-}
-
-# assert that we have the right length for all batches
-assertthat::are_equal(length(batches_returned),
-                      data.frame(length = lengths(batches_returned),
-                                batch = seq(batches_returned)) %>%
-                              filter(length ==9) %>%
-                              nrow())
+# # get last problem batch
+# # batches with prpblems
+# problems_again = data.frame(length = lengths(batches_returned),
+#                             batch = seq(batches_returned)) %>%
+#         filter(length !=9) %>%
+#         pull(batch)
+# 
+# # rerun problem batches
+# batches_problems_again = foreach(b = 1:length(problems_again),
+#                            .errorhandling = 'pass') %do% {
+#                                    
+#                                    # push batch 
+#                                    out = get_bgg_api_data(batches[[problems_again[b]]][-120])
+#                                    
+#                                    # pause to avoid taxing the API
+#                                    Sys.sleep(20)
+#                                    
+#                                    # print
+#                                    #  print(paste("batch", b, "of", length(batches), "complete"))
+#                                    cat(paste("batch", b, "of", length(problems_again), "complete"), sep="\n")
+#                                    
+#                                    # return
+#                                    out
+#                                    
+#                            }
+# 
+# # check again, again
+# for (i in 1:length(problems_again)) {
+#         batches_returned[[problems_again[i]]] = batches_problems_again[[i]]
+# }
+# 
+# # assert that we have the right length for all batches
+# assertthat::are_equal(length(batches_returned),
+#                       data.frame(length = lengths(batches_returned),
+#                                 batch = seq(batches_returned)) %>%
+#                               filter(length ==9) %>%
+#                               nrow())
 
 # pulling from API done
 print(paste("saving to local"))
@@ -171,6 +171,7 @@ readr::write_rds(batches_returned,
                  file = here::here(paste("raw/batches_returned_", Sys.Date(), ".Rdata", sep="")))
 
 beepr::beep(3)
+
 # extract tables
 print(paste("creating tables"))
 
