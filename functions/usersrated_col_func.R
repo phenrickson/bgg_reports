@@ -8,7 +8,8 @@ usersrated_col_func <-
                            2000,
                            5000,
                            10000,
-                           25000)
+                           25000,
+                           50000)
                 
                 colorRamp=colorRampPalette(c("white", "deepskyblue1"))
                 col_palette <- colorRamp(length(breaks))
