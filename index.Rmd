@@ -51,7 +51,7 @@ Rather than trying to predict how the boardgamegeek community will rate a game, 
 
 [me](rahdo_2020.html)
 
-[my brother](GOBBluth89_2020.html)
+[my brother](GOBbluth89_2020.html)
 
 4. [**Finding Boardgame "Neighbors"**]():
 
