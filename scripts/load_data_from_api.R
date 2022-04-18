@@ -85,45 +85,48 @@ problems = check %>%
         filter(length!=9) %>%
         pull(batch)
 
-# rerun problem batches
-batches_problems = foreach(b = 1:length(problems),
-                           .errorhandling = 'pass') %do% {
-                                   
-                                   # push batch 
-                                   out = get_bgg_api_data(batches[[problems[b]]])
-                                   
-                                   # pause to avoid taxing the API
-                                   Sys.sleep(20)
-                                   
-                                   # print
-                                   #  print(paste("batch", b, "of", length(batches), "complete"))
-                                   cat(paste("batch", b, "of", length(problems), "complete"), sep="\n")
-                                   
-                                   # return
-                                   out
-                                   
-                           }
+# check length
+length(problems) < 1
 
-
-# combine to ensure we have data for every batch
-batches_all = c(batches_returned,
-                batches_problems)
-
-# fix
-for (i in 1:length(problems)) {
-        batches_returned[[problems[i]]] = batches_problems[[i]]
-}
-
-#batches_returned[[problems]] = batches_problems[[1]]
-# check again
-check_again = data.frame(length = lengths(batches_returned),
-                   batch = seq(batches_returned)) %>%
-        filter(length ==9) %>%
-        nrow()
-
-# assert that we have the right length for all batches
-assertthat::are_equal(length(batches_returned),
-                      check_again)
+# # rerun problem batches
+# batches_problems = foreach(b = 1:length(problems),
+#                            .errorhandling = 'pass') %do% {
+#                                    
+#                                    # push batch 
+#                                    out = get_bgg_api_data(batches[[problems[b]]])
+#                                    
+#                                    # pause to avoid taxing the API
+#                                    Sys.sleep(20)
+#                                    
+#                                    # print
+#                                    #  print(paste("batch", b, "of", length(batches), "complete"))
+#                                    cat(paste("batch", b, "of", length(problems), "complete"), sep="\n")
+#                                    
+#                                    # return
+#                                    out
+#                                    
+#                            }
+# 
+# 
+# # combine to ensure we have data for every batch
+# batches_all = c(batches_returned,
+#                 batches_problems)
+# 
+# # fix
+# for (i in 1:length(problems)) {
+#         batches_returned[[problems[i]]] = batches_problems[[i]]
+# }
+# 
+# #batches_returned[[problems]] = batches_problems[[1]]
+# # check again
+# check_again = data.frame(length = lengths(batches_returned),
+#                    batch = seq(batches_returned)) %>%
+#         filter(length ==9) %>%
+#         nrow()
+# 
+# # assert that we have the right length for all batches
+# assertthat::are_equal(length(batches_returned),
+#                       check_again)
 
 # # get last problem batch
 # # batches with prpblems

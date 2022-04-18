@@ -8,7 +8,7 @@ output:
     keep_md: no
     fig.caption: yes
 params:
-  end_training_year: 2020
+  end_training_year: 2022
   min_ratings: 30
 ---
 
@@ -40,6 +40,7 @@ library(broom.mixed)
 source(here::here("functions/theme_phil.R"))
 source(here::here("functions/tidy_name_func.R"))
 source(here::here("functions/pivot_and_dummy_types.R"))
+source(here::here("functions/get_bgg_data_from_github.R"))
 rm(a)
 
 ```
@@ -94,12 +95,15 @@ active_games<-DBI::dbGetQuery(bigquerycon,
 
 # create caption for plots
 my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
-                        paste("Data and analysis at github.com/phenrickson/bgg"), sep="\n")))
+                        paste("Data and analysis at https://phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
 
 
 # long table with game type variables
 game_types= DBI::dbGetQuery(bigquerycon, 
                               'SELECT * FROM bgg.api_game_categories')
+
+# get bgg today
+bgg_today = get_bgg_data_from_github(Sys.Date()-1)
 
 ```
 
@@ -142,7 +146,10 @@ game_types_pivoted =game_types_selected %>%
 games_model = active_games %>%
         left_join(.,
                   game_types_pivoted,
-                  by = "game_id") 
+                  by = "game_id") %>%
+        filter(game_id %in% (bgg_today %>%
+                                     pull(game_id))) %>%
+        filter(game_id != 295564)
 
 ```
 
@@ -153,14 +160,13 @@ games_model = active_games %>%
 # get full dataset
 games_full = games_model %>%
         mutate(dataset = case_when(yearpublished <= params$end_training_year ~ 'train',
-                                   yearpublished == params$end_training_year+1 | yearpublished == params$end_training_year +2 ~ 'validation',
-                                   TRUE ~ 'test')) %>%
+                                   yearpublished == params$end_training_year+1 ~ 'validation',
+                                   yearpublished >= params$end_training_year+2 ~ 'test')) %>%
         mutate(log_usersrated = log(usersrated))
 
 # filter our training set to only games with at least n ratings
 games_train = games_full %>%
-        filter(dataset == 'train') %>%
-        filter(usersrated >= params$min_ratings)
+        filter(dataset == 'train')
 
 games_validation = games_full %>%
         filter(dataset == 'validation')
@@ -307,7 +313,7 @@ base_recipe = recipe(x = games_train) %>%
 
 ```
 
-# PCA
+# Dimension Reduction via PCA
 
 I'm first interested in exploring using PCA for dimension reduction to learn more about the main points of variation in the data.
 
@@ -318,12 +324,81 @@ I'll then create an additional recipe on top of this that normalizes the data fo
 # pca focusing on fundamentals + mechanics
 pca_mechanics_recipe = base_recipe %>%
         step_rm(starts_with("trunc_yearpublished"),
-                starts_with("category"),
-                starts_with("artist_"),
+                starts_with("artist"),
                 starts_with("designer_"),
                 starts_with("publisher_"),
                 starts_with("published_"),
-                starts_with("family")) %>%
+                starts_with("category_book"),
+                starts_with("category_mafia"),
+                starts_with("category_horror"),
+                starts_with("category_trains"),
+                starts_with("category_comic_book_strip"),
+            #    starts_with("category_racing"),
+                starts_with("category_book"),
+                starts_with("category_sports"),
+                starts_with("category_trains"),
+                starts_with("category_travel"),
+                starts_with("category_trivia"),
+                starts_with("category_ancient"),
+                starts_with("category_animals"),
+                starts_with("category_fantasy"),
+                starts_with("category_farming"),
+                starts_with("category_pirates"),
+              #  starts_with("category_wargame"),
+                starts_with("category_zombies"),
+             #   starts_with("category_bluffing"),
+                starts_with("category_economic"),
+             #   starts_with("category_fighting"),
+                starts_with("category_medieval"),
+                starts_with("category_nautical"),
+                starts_with("category_adventure"),
+                starts_with("category_civil_war"),
+                starts_with("category_deduction"),
+                starts_with("category_mythology"),
+                starts_with("category_political"),
+                starts_with("category_religious"),
+                starts_with("category_electronic"),
+                starts_with("category_napoleonic"),
+                starts_with("category_educational"),
+                starts_with("category_exploration"),
+                starts_with("category_novelbased"),
+                starts_with("category_prehistoric"),
+                starts_with("category_renaissance"),
+                starts_with("category_world_war_i"),
+                starts_with("category_world_war_ii"),
+                starts_with("category_civilization"),
+                starts_with("category_age_of_reason"),
+                starts_with("category_american_west"),
+                starts_with("category_city_building"),
+                starts_with("category_environmental"),
+                starts_with("category_mature_adult"),
+                starts_with("category_modern_warfare"),
+                starts_with("category_murdermystery"),
+                starts_with("category_transportation"),
+                starts_with("category_postnapoleonic"),
+                starts_with("category_science_fiction"),
+                starts_with("category_video_game_theme"),
+                starts_with("category_aviation_flight"),
+                starts_with("category_space_exploration"),
+                starts_with("category_american_civil_war"),
+                starts_with("cateogry_comic_book_strip"),
+                starts_with("category_territory_building"),
+                starts_with("category_spiessecret_agents"),
+                starts_with("category_industry_manufacturing"),
+                starts_with("category_movies_tv_radio_theme"),
+                starts_with("family_ancient_rome"),
+                starts_with("family_animals_cats"),
+                starts_with("family_brands_"),
+                starts_with("family_continents_"),
+                starts_with("family_country_"),
+                starts_with("family_creatures_"),
+                starts_with("family_crowdfunding"),
+                starts_with("family_history_"),
+                starts_with("family_magazine_"),
+                starts_with("family_movies_"),
+                starts_with("family_sports_"),
+                starts_with("family_theme_"),
+                starts_with("family_word_")) %>%
         step_normalize(all_numeric_predictors()) %>%
         step_pca(all_numeric_predictors(), 
                  id = "pca",
@@ -444,31 +519,30 @@ pca_categories_rotation %>%
         geom_vline(xintercept = 0,
                    linetype = 'dashed')+
         geom_hline(yintercept =0,
-                   linetype = 'dashed')+
-        annotate("label",
-                 label = "Complex, Thematic",
-                 color = 'blue',
-                 x = 9,
-                 y = -8)+
-        annotate("label",
-                 label = "Abstract",
-                 color = 'blue',
-                 x = -4,
-                 y = 5)+
-        annotate("label",
-                 label = "Party, Social Deduction",
-                 color = 'blue',
-                 x = -5,
-                 y = -5)+
-        annotate("label",
-                 label = "Wargames/Simulation",
-                 color = 'blue',
-                 x = 10,
-                 y = 7)+
-        coord_cartesian(xlim = c(-7, 15),
-                        ylim = c(-14, 8))
+                   linetype = 'dashed')
+        # annotate("label",
+        #          label = "Complex, Thematic",
+        #          color = 'blue',
+        #          x = 9,
+        #          y = -8)+
+        # annotate("label",
+        #          label = "Abstract",
+        #          color = 'blue',
+        #          x = -4,
+        #          y = 5)+
+        # annotate("label",
+        #          label = "Party, Social Deduction",
+        #          color = 'blue',
+        #          x = -5,
+        #          y = -5)+
+        # annotate("label",
+        #          label = "Wargames/Simulation",
+        #          color = 'blue',
+        #          x = 10,
+        #          y = 7)
 
 ```
+
 How well does each dimension summarize the variation in the data? We can use a scree plot to examine the percentage of variation explained by each component as well as the cumulative variation as we up the number of compnents.
 
 ```{r show scree plot for categories}
@@ -529,9 +603,9 @@ The third is the difference between tight economic games and games with more luc
 The fourth is straight up about the number of players really needed for the game (solo vs party).
 ...
 
-I'm struggling with some of these latter ones. I'm going to plot every game on each one of these and pick out particular games, that might help.
+I'm struggling with some of these latter ones. 
 
-```{r plot distribution of games by each component, fig.height=14, fig.width=10}
+```{r plot distribution of games by each component, eval=F, fig.height=14, fig.width=10}
 
 library(ggforce)
 
@@ -610,7 +684,9 @@ place_game_func = function(rotation,
                    color = name,
                    yend=as.numeric(component)+0.5),
                size = 1.1)+
-                scale_color_viridis_d(option = "A")
+                scale_color_viridis_d(option = "A",
+                                      begin = 0.2,
+                                      end=0.8)
         
         # plot a smooth line through
         c = b + geom_path(data = game_dat,
@@ -664,7 +740,7 @@ place_game_func(pca_categories_rotation,
 
 Okay, just *one* more. What about a dudes on a map game like Kemet and a co op like Spirit Island?
 
-```{r place another sample game 2}
+```{r place another sample game 3}
 
 place_game_func(pca_categories_rotation,
                 20,
@@ -677,6 +753,7 @@ place_game_func(pca_categories_rotation,
                         pull(game_id))
 
 ```
+
 Hmm. I'm going to keep this in mind for later on, this is rather interesting.
 
 ### Mechanics
@@ -792,6 +869,7 @@ pca_mechanics_trained %>%
                 #   ncol =1,
                    scales = "free")+
         theme_phil()
+
 ```
 
 Here, the first few components explain more of the variation, and it takes about 7 components to explain 25% of the overall variation in the dataset.
@@ -832,12 +910,12 @@ We look to be getting some similar results.
 ```{r place sample games for mechanics}
 
 place_game_func(pca_mechanics_rotation,
-                10,
+                25,
                 input_game_id = active_games %>% 
-                        filter(name == 'Tigris & Euphrates' | 
-                                       name == 'Nemesis' |
-                                       name == 'Spirit Island' |
-                                       name == 'Gloomhaven') %>%
+                        filter(name == 'War of the Ring: Second Edition' | 
+                                    #   name == 'Nemesis' |
+                                       name == 'Spirit Island') %>%
+                   #                    name == 'Gloomhaven') %>%
                         pull(game_id))
 
 ```
@@ -853,16 +931,22 @@ gc()
 
 ```
 
-
 # Nearest Neighbors
 
 Once we've computed the principal components using the different sets of features, we can get the distance between all observations in order to find each game's nearest neighbors.
 
-```{r loop over to find neighbors}
+```{r functions for nearest neighbors}
 
 # custom n.min function
 n_min_func <- function(row, n) {
         neighbors = order(row)[1:n]
+        data.frame(neighbor = neighbors,
+                   dist = row[neighbors])
+}
+
+# custom n.min function
+n_max_func <- function(row, n) {
+        neighbors = rev(order(row))[1:n]
         data.frame(neighbor = neighbors,
                    dist = row[neighbors])
 }
@@ -878,15 +962,165 @@ get_dist_func = function(input_data, select_method) {
         
 }
 
+# cosine distance
+library(lsa)
+library(REdaS)
+
+dist_cosine_func = function(input_mat) {
+        
+        Matrix <- as.matrix(input_mat)
+        sim <- Matrix / sqrt(rowSums(Matrix * Matrix))
+        out <- sim %*% t(sim)
+        
+}
+
 # get neighbors from a distance matrix
-find_neighbors_func = function(input_dist, neighbors) {
-        apply(input_dist, 1, n_min_func, n = neighbors) %>%
+find_neighbors_min_func = function(input_dist, num_neighbors) {
+        apply(input_dist, 1, n_min_func, n = num_neighbors) %>%
                         rbindlist(idcol = T) %>%
                 set_names(., c(".row", ".row_neighbor", "dist")) %>%
                 mutate(.row = as.integer(.row),
-                       .row_neighbor = as.integer(.row_neighbor)) %>%
-                filter(dist > 0)
+                       .row_neighbor = as.integer(.row_neighbor))
+             #   filter(dist > 0)
 }
+
+# get neighbors from a distance matrix
+find_neighbors_max_func = function(input_dist, num_neighbors) {
+        apply(input_dist, 1, n_max_func, n = num_neighbors) %>%
+                        rbindlist(idcol = T) %>%
+                set_names(., c(".row", ".row_neighbor", "dist")) %>%
+                mutate(.row = as.integer(.row),
+                       .row_neighbor = as.integer(.row_neighbor))
+             #   filter(dist > 0)
+}
+
+```
+
+
+```{r get cosine distances}
+
+number_pcs = paste("PC", seq(1, 25), sep="")
+
+# get a matrix where each row is one game's values on the first two principal compnents
+pca_mat = pca_mechanics_rotation %>%
+        mutate(.row = row_number()) %>%
+        select(.row, starts_with("PC")) %>%
+        select(.row, all_of(number_pcs)) %>%
+        column_to_rownames(".row") %>%
+        as.matrix()
+
+# get cosine similarity
+dist_cosine = dist_cosine_func(pca_mat)
+
+# get neighbors from cosine
+neighbors_cosine = find_neighbors_max_func(dist_cosine, 26) %>%
+        left_join(., games_train %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, average, bayesaverage),
+                  by = c(".row")) %>%
+        left_join(., games_train %>%
+                          mutate(.row_neighbor = row_number(),
+                                 neighbor_id = game_id,
+                                 neighbor_name = name,
+                                 neighbor_average = average,
+                                 neighbor_bayesaverage = bayesaverage) %>%
+                          select(.row_neighbor, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage),
+                  by = c(".row_neighbor"))
+
+```
+
+
+```{r distribution of cosine similarity}
+
+# make histogram
+hist(dist_cosine[sample(1:nrow(pca_mat), 1000),],
+     main="",
+     xlab = "cosine similarity")
+
+#quantile(dist_cosine, probs = c(0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, .99))
+
+```
+
+```{r get all neighbors for a sample of games}
+
+samp_rows = games_train %>% 
+        mutate(.row = row_number()) %>% 
+        filter(name == 'Twilight Imperium: Fourth Edition' |
+                       name == 'Spyfall' |
+                       name == 'Burgle Bros.' | 
+                       name == 'Parade' | 
+                       name == 'Troyes'| 
+                       name == 'Monopoly' |
+                       name == 'Brass: Birmingham' |
+                       name == 'Great Western Trail' |
+                       name == 'Dinosaur Island' |
+                       name == 'On Mars' |
+                       name == 'Tiny Towns' |
+                       name == 'Wingspan' |
+                       name == 'Irish Gauge'
+               ) %>% 
+        select(.row, name) %>%
+        pull(.row)
+
+samp_neighbors = find_neighbors_max_func(dist_cosine[samp_rows,], ncol(dist_cosine)) %>%
+           left_join(., games_train %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, average, bayesaverage),
+                  by = c(".row")) %>%
+        left_join(., games_train %>%
+                          mutate(.row_neighbor = row_number(),
+                                 neighbor_id = game_id,
+                                 neighbor_name = name,
+                                 neighbor_average = average,
+                                 neighbor_bayesaverage = bayesaverage) %>%
+                          select(.row_neighbor, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage),
+                  by = c(".row_neighbor")) %>%
+        rename(similarity = dist) %>%
+        mutate(score = similarity * neighbor_bayesaverage) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        as_tibble() %>%
+        filter(name != neighbor_name)
+
+```
+
+
+```{r find similar}
+
+samp = 'Tindaya'
+
+neighbors_cosine %>%
+        mutate_if(is.numeric, round, 2) %>%
+        filter(name != neighbor_name) %>%
+        rename(similarity = dist) %>%
+        select(similarity, game_id, name, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage) %>%
+        filter(name %in% samp) %>%
+   #     filter(game_id %in% 256730) %>%
+        arrange(desc(neighbor_bayesaverage)) %>%
+        mutate(score = similarity * neighbor_bayesaverage) %>%
+        arrange(desc(similarity)) %>%
+        mutate_if(is.numeric, round, 2) %>% 
+        View()
+
+ids = neighbors_cosine %>%
+        mutate_if(is.numeric, round, 2) %>%
+        filter(name != neighbor_name) %>%
+        rename(similarity = dist) %>%
+        select(similarity, game_id, name, neighbor_id, neighbor_name) %>%
+        filter(name %in% samp) %>%
+        select(game_id, neighbor_id) %>%
+        gather() %>%
+        select(value) %>%
+        unique() %>%
+        pull()
+
+# games_train %>%
+#         filter(game_id %in% ids) %>%
+#         select(yearpublished, name, averageweight, playingtime, minplayers, maxplayers) %>%
+#         mutate_if(is.numeric, round, 2)
+
+```
+
+```{r loop over to find neighbors}
 
 # combine rotations, get distances, and then find neighbors
 neighbors_train = bind_rows(
@@ -901,16 +1135,97 @@ neighbors_train = bind_rows(
                                       ~ .x %>% 
                                               select(starts_with("PC")))) %>%
         select(type, rotation) %>%
-        mutate(dist = map(rotation,
+        mutate(dist_cosine = map(rotation,
+                                 ~ dist_cosine_func(.x %>%
+                                                            as.matrix())))
+                                 
+                                 
+        mutate(dist_euclidean = map(rotation,
                           ~ dist(.x %>%
-                                         select(one_of(paste("PC", seq(1, 20), sep=""))) %>%
+                                         as.matrix() %>%
+                                         as.data.frame(),
+                                 method = "euclidean"))) %>%
+        mutate(neighbors_euclidean = map(dist_euclidean,
+                               ~ find_neighbors_func(.x,
+                                                     num_neighbors = 26)))
+
+
+        mutate(dist_manhattan = map(rotation,
+                          ~ dist(.x %>%
                                          as.matrix() %>%
                                          as.data.frame(),
                                  method = "manhattan"))) %>%
-        mutate(neighbors = map(dist,
+        mutate(neighbors_manhattan = map(dist_manhattan,
+                               ~ find_neighbors_func(.x,
+                                                     num_neighbors = 26))) %>%
+        mutate(dist_cosine = map(rotation,
+                          ~ dist(.x %>%
+                                         as.matrix() %>%
+                                         as.data.frame(),
+                                 method = "manhattan"))) %>%
+        mutate(neighbors_manhattan = map(dist_manhattan,
                                ~ find_neighbors_func(.x,
                                                      neighbors = 26)))
+                
         
+```
+
+
+
+```{r cosine distance}
+
+library(lsa)
+library(REdaS)
+
+# get a matrix where each row is one game's values on the first two principal compnents
+pca_mat = pca_mechanics_rotation %>%
+    #    sample_n(1000) %>%
+       # filter(game_id %in% samp_ids) %>%
+        # filter(name == 'Twilight Imperium: Fourth Edition' | name == 'Azul' | name == 'Reef' | name == 'Forgotten Waters' | name == 'Patchwork' | name == 'Spyfall') %>%
+      #  select(yearpublished, game_id, name, PC1, PC2) %>%
+   #     mutate(name_id = paste(name, game_id, sep="_")) %>%
+  #      select(name_id, starts_with("PC")) %>%
+   #     column_to_rownames("name_id") %>%
+        mutate(.row = row_number()) %>%
+        select(.row, starts_with("PC")) %>%
+        column_to_rownames(".row") %>%
+        as.matrix()
+
+dist_cosine = dist_cosine_func(pca_mat)
+
+# # compute it ourselves
+# num= pca_mat[1,] %*% pca_mat[2,]
+# denom = sqrt(sum(pca_mat[1,]^2)) * sqrt(sum(pca_mat[2,]^2))
+# cos_ex = num/denom
+# angle = rad2deg(acos(cos_ex))
+
+# compute it a faster way using the matrix
+
+Matrix <- as.matrix(pca_mat)
+sim <- Matrix / sqrt(rowSums(Matrix * Matrix))
+out <- sim %*% t(sim)
+
+
+neighbors_cosine = find_neighbors_func(out, 
+                                       neighbors = 10)
+
+distance_cosine = out %>%
+        as.matrix() %>%
+        as.data.frame() %>%
+        rownames_to_column("game_id") %>%
+        gather('closest','dist',-game_id) %>%
+        left_join(., games_train %>%
+                          select(game_id, name),
+                  by = c("game_id")) %>%
+             #   filter(game == 'Teotihuacan: City of Gods') %>%
+        mutate(dist = 1-dist) %>% # cosine distance
+        mutate_if(is.numeric, round, 3) %>%
+        filter(dist !=0) %>%
+        arrange(dist) %>%
+        mutate(type = "cosine") %>%
+        group_by(game) %>%
+        arrange
+
 ```
 
 

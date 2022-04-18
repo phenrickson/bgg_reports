@@ -52,7 +52,14 @@ tidy_name_func <-
                 x = gsub("3dimensional", "", x)
                 x = gsub("3d", "3D", x)
                 x = gsub("Usa", "USA", x)
+                x = gsub("3D", "3D Components", x)
                 x = gsub("Averageweight", "Average Weight", x)
+                x = gsub("Wizkids I", "WizKids", x)
+                x = gsub("Decision Kids I", "Decision Kids", x)
+                x = gsub("Selfpublished", "Self-Published", x)
+                x = gsub("Gamewright", "GameWright", x)
+                x = gsub("Eaglegryphon", "Eagle-Gryphon", x)
+                x = gsub("Scoreandreset", "Score and Reset", x)
                 x
                 
         }
