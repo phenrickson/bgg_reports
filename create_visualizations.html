@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+
+
+<title>Create Visualizations for Presentation</title>
+
+<script src="site_libs/header-attrs-2.11/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/cerulean.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.11.4/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+<link href="site_libs/tabwid-1.0.0/tabwid.css" rel="stylesheet" />
+<link href="site_libs/font-awesome-5.1.0/css/all.css" rel="stylesheet" />
+<link href="site_libs/font-awesome-5.1.0/css/v4-shims.css" rel="stylesheet" />
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark it active
+  menuAnchor.tab('show');
+
+  // if it's got a parent navbar menu mark it active as well
+  menuAnchor.closest('li.dropdown').addClass('active');
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "&#xe258;";
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Data Analysis Paralysis</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="https://phenrickson.github.io/data-analysis-paralysis/">
+    <span class="fa fa-home fa-lg"></span>
+     
+  </a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        <li>
+  <a href="mailto:&lt;phil.henrickson@gmail.com&gt;">
+    <span class="fa fa-envelope fa-lg"></span>
+     
+  </a>
+</li>
+<li>
+  <a href="http://github.com/phenrickson/">
+    <span class="fa fa-github fa-lg"></span>
+     
+  </a>
+</li>
+<li>
+  <a href="https://www.linkedin.com/in/phenrickson/">
+    <span class="fab fa-linkedin fa-lg"></span>
+     
+  </a>
+</li>
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">Create Visualizations for Presentation</h1>
+
+</div>
+
+
+<div id="visualizations" class="section level1" number="1">
+<h1><span class="header-section-number">1</span> Visualizations</h1>
+<div id="a-golden-age-of-boardgames" class="section level2" number="1.1">
+<h2><span class="header-section-number">1.1</span> A Golden Age of Boardgames?</h2>
+<p>How many games are there in the BGG database with at least 1 rating? More games are coming out every single year.</p>
+<p><img src="create_visualizations_files/figure-html/games%20over%20time-1.png" width="960" /></p>
+</div>
+<div id="more-people-are-playing-games" class="section level2" number="1.2">
+<h2><span class="header-section-number">1.2</span> More People are Playing Games</h2>
+<p><img src="create_visualizations_files/figure-html/user%20ratings%20over%20time-1.png" width="960" /></p>
+</div>
+<div id="games-are-getting-better" class="section level2" number="1.3">
+<h2><span class="header-section-number">1.3</span> Games Are Getting Better</h2>
+<p>Average ratings by game over time.</p>
+<p><img src="create_visualizations_files/figure-html/average%20ratings%20over%20time-1.png" width="960" /> ## All the Games You Like are Bad</p>
+<p>Show how many popular games are bad.</p>
+<p><img src="create_visualizations_files/figure-html/user%20ratings%20vs%20average-1.png" width="960" /></p>
+<p>Why are some games higher rated/more popular than others? If we can learn something about this relationship, then we can predict which upcoming games are going to be good.</p>
+</div>
+<div id="families" class="section level2" number="1.4">
+<h2><span class="header-section-number">1.4</span> Families</h2>
+<p><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20family%20type-1.png" width="960" /><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20family%20type-2.png" width="960" /></p>
+<p>Some features we won’t include, such as the Mensa Select or implementations on BoardGameArena/Tabletopia, as these are outcomes that typically occur when a game has been popular and shouldn’t be used as predictors.</p>
+</div>
+<div id="categories" class="section level2" number="1.5">
+<h2><span class="header-section-number">1.5</span> Categories</h2>
+<p>We’ll do the same thing for categories, but this variable is much smaller and generally pretty well organized.</p>
+<p><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20category-1.png" width="960" /><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20category-2.png" width="960" /></p>
+<p>We’ll include all of these, though there will likely be some overlap between these and other features which we can take care of with a correlation filter.</p>
+</div>
+<div id="mechanics" class="section level2" number="1.6">
+<h2><span class="header-section-number">1.6</span> Mechanics</h2>
+<p>Mechanics are also pretty well organized, so we don’t have to do much filtering.</p>
+<p><img src="create_visualizations_files/figure-html/now%20look%20at%20mechanics-1.png" width="960" /><img src="create_visualizations_files/figure-html/now%20look%20at%20mechanics-2.png" width="960" /></p>
+<pre class="r"><code># get full dataset
+games_full = games_model %&gt;%
+        mutate(dataset = case_when(yearpublished &lt;= params$end_training_year ~ &#39;train&#39;,
+                                   yearpublished == params$end_training_year+1 | yearpublished == params$end_training_year +2 ~ &#39;validation&#39;,
+                                   TRUE ~ &#39;test&#39;)) %&gt;%
+        mutate(log_usersrated = log1p(usersrated))
+
+# filter our training set to only games with at least n ratings
+games_train = games_full %&gt;%
+        filter(dataset == &#39;train&#39;) %&gt;%
+        filter(usersrated &gt;= params$min_ratings) %&gt;%
+        filter(game_id %in% (bgg_today$game_id)) # filter to include only games that are present in the list of released games from beefsack on github
+        
+
+games_validation = games_full %&gt;%
+        filter(dataset == &#39;validation&#39;) %&gt;%
+        filter(usersrated &gt;= params$min_ratings) %&gt;%
+        filter(game_id %in% (bgg_today$game_id)) # filter to include only games that are present in the list of released games from beefsack on github
+
+games_test =  games_full %&gt;%
+        filter(dataset == &#39;test&#39;)
+
+# count up number of games in each
+bind_rows(games_train,
+          games_validation,
+          games_test) %&gt;%
+        group_by(dataset) %&gt;%
+        count() %&gt;%
+        arrange(desc(n)) %&gt;%
+        rename(games = n) %&gt;%
+        flextable() %&gt;%
+        autofit()</code></pre>
+<template id="cf7a4b31-6e97-42e0-b051-4a285c83cdd2"><style>
+.tabwid table{
+  border-spacing:0px !important;
+  border-collapse:collapse;
+  line-height:1;
+  margin-left:auto;
+  margin-right:auto;
+  border-width: 0;
+  display: table;
+  margin-top: 1.275em;
+  margin-bottom: 1.275em;
+  border-color: transparent;
+}
+.tabwid_left table{
+  margin-left:0;
+}
+.tabwid_right table{
+  margin-right:0;
+}
+.tabwid td {
+    padding: 0;
+}
+.tabwid a {
+  text-decoration: none;
+}
+.tabwid thead {
+    background-color: transparent;
+}
+.tabwid tfoot {
+    background-color: transparent;
+}
+.tabwid table tr {
+background-color: transparent;
+}
+</style><div class="tabwid"><style>.cl-405760e4{}.cl-4055423c{font-family:'Helvetica';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(102, 102, 102, 1.00);background-color:transparent;}.cl-40554836{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:3pt;padding-top:3pt;padding-left:3pt;padding-right:3pt;line-height: 1;background-color:transparent;}.cl-40554840{margin:0;text-align:right;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:3pt;padding-top:3pt;padding-left:3pt;padding-right:3pt;line-height: 1;background-color:transparent;}.cl-40555b32{width:61.7pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-40555b3c{width:48.8pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-40555b46{width:61.7pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-40555b47{width:48.8pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-40555b50{width:61.7pt;background-color:transparent;vertical-align: middle;border-bottom: 1pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-40555b5a{width:48.8pt;background-color:transparent;vertical-align: middle;border-bottom: 1pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table class='cl-405760e4'>
+<thead><tr style="overflow-wrap:break-word;"><td class="cl-40555b50"><p class="cl-40554836"><span class="cl-4055423c">dataset</span></p></td><td class="cl-40555b5a"><p class="cl-40554840"><span class="cl-4055423c">games</span></p></td></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-40555b32"><p class="cl-40554836"><span class="cl-4055423c">train</span></p></td><td class="cl-40555b3c"><p class="cl-40554840"><span class="cl-4055423c">18,804</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-40555b46"><p class="cl-40554836"><span class="cl-4055423c">validation</span></p></td><td class="cl-40555b47"><p class="cl-40554840"><span class="cl-4055423c">2,262</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-40555b46"><p class="cl-40554836"><span class="cl-4055423c">test</span></p></td><td class="cl-40555b47"><p class="cl-40554840"><span class="cl-4055423c">1,036</span></p></td></tr></tbody></table></div></template>
+<div class="flextable-shadow-host" id="2ceff20b-fa78-4be0-aa6f-f5056378c6ff"></div>
+<script>
+var dest = document.getElementById("2ceff20b-fa78-4be0-aa6f-f5056378c6ff");
+var template = document.getElementById("cf7a4b31-6e97-42e0-b051-4a285c83cdd2");
+var caption = template.content.querySelector("caption");
+if(caption) {
+  caption.style.cssText = "display:block;text-align:center;";
+  var newcapt = document.createElement("p");
+  newcapt.appendChild(caption)
+  dest.parentNode.insertBefore(newcapt, dest.previousSibling);
+}
+var fantome = dest.attachShadow({mode: 'open'});
+var templateContent = template.content;
+fantome.appendChild(templateContent);
+</script>
+
+<p>We’re going to use the tidymodels framework for our model training and evaluation, so we’ll create custom splits around these for our workflows.</p>
+<pre class="r"><code># make an initial split based on previously defined splits
+validation_split = make_splits(list(analysis = seq(nrow(games_train)),
+                                 assessment = nrow(games_train) + seq(nrow(games_validation))),
+                            data  = bind_rows(games_train,
+                                      games_validation))</code></pre>
+<p>We can do a bit of exploratory analysis on this to help guide decisions we’ll make in our recipe, which we’ll build on the training set. We’ll look at some of the main numeric features of games, such as player counts, playingtime, and yearpublished, for each of our outcomes.</p>
+</div>
+<div id="scatter-plots" class="section level2" number="1.7">
+<h2><span class="header-section-number">1.7</span> Scatter Plots</h2>
+<p><img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20usersrated-1.png" width="960" /><img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20usersrated-2.png" width="960" /></p>
+</div>
+<div id="correlation-plots" class="section level2" number="1.8">
+<h2><span class="header-section-number">1.8</span> Correlation Plots</h2>
+<p>We can look at the correlation between our outcomes, the main features we have for games (playtime, player count, complexity) and some of the categorical features.</p>
+<div class="figure">
+<img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20categories-1.png" alt="Correlation plot of game info and game categories" width="1152" />
+<p class="caption">
+Correlation plot of game info and game categories
+</p>
+</div>
+<p>What about mechanics? Let’s look at the correlation between mechanics and these numeric features.</p>
+<div class="figure">
+<img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20mechanics-1.png" alt="Correlation plot of game info and game mechanics" width="1152" />
+<p class="caption">
+Correlation plot of game info and game mechanics
+</p>
+</div>
+</div>
+</div>
+<div id="visualizations-from-models" class="section level1" number="2">
+<h1><span class="header-section-number">2</span> Visualizations from Models</h1>
+<div id="how-did-the-models-do" class="section level2" number="2.1">
+<h2><span class="header-section-number">2.1</span> How did the models do?</h2>
+</div>
+<div id="what-did-they-learn" class="section level2" number="2.2">
+<h2><span class="header-section-number">2.2</span> What did they learn?</h2>
+<div id="linear-models" class="section level3" number="2.2.1">
+<h3><span class="header-section-number">2.2.1</span> Linear Models</h3>
+<pre><code>## Warning: `cols` is now required when using unnest().
+## Please use `cols = c(tidied)`</code></pre>
+<pre><code>## Picking joint bandwidth of 0.000966</code></pre>
+<p><img src="create_visualizations_files/figure-html/get%20stuff%20from%20the%20linear%20models%20for%20average-1.png" width="960" /></p>
+<pre><code>## Warning: `cols` is now required when using unnest().
+## Please use `cols = c(tidied)`</code></pre>
+<pre><code>## Picking joint bandwidth of 0.00129</code></pre>
+<p><img src="create_visualizations_files/figure-html/get%20stuff%20from%20the%20linear%20models%20for%20usersrated-1.png" width="960" /></p>
+</div>
+<div id="xgbtree" class="section level3" number="2.2.2">
+<h3><span class="header-section-number">2.2.2</span> xgbTree</h3>
+<pre><code>## Warning: package &#39;fastshap&#39; was built under R version 4.1.1</code></pre>
+<pre><code>## [conflicted] Will prefer fastshap::explain over any other package</code></pre>
+<p><img src="create_visualizations_files/figure-html/examine%20the%20computed%20shapley%20values-1.png" width="960" /><img src="create_visualizations_files/figure-html/examine%20the%20computed%20shapley%20values-2.png" width="960" /></p>
+</div>
+</div>
+<div id="why-is-the-model-making-this-prediction" class="section level2" number="2.3">
+<h2><span class="header-section-number">2.3</span> Why is the model making this prediction?</h2>
+<p>Why does the model like a game such as Frosthaven? We’ll grab some more Shapley values to gain some insight into predictions for each outcome for each game. Above each graph we can see the model’s predictions vs the current value on BGG.</p>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20frosthaven-1.png" width="960" /></p>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20a%20game%20we%20got%20right-1.png" width="960" /></p>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20a%20game%20we%20got%20wrong-1.png" width="960" /><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20a%20game%20we%20got%20wrong-2.png" width="960" /></p>
+<div id="why-is-monopoly-bad" class="section level3" number="2.3.1">
+<h3><span class="header-section-number">2.3.1</span> Why is Monopoly bad?</h3>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20monopoly-1.png" width="960" /></p>
+<p>```</p>
+</div>
+</div>
+</div>
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = true;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

@@ -167,7 +167,7 @@ rm(game_types_pivoted,
 most_recent_date = as.Date(games_model$timestamp[1])
 
 my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
-                        paste("Data and analysis at https://phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
+                        paste("Data and analysis at phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
 
 ```
 
@@ -180,7 +180,8 @@ games_upcoming = games_model %>%
         mutate(dataset = 'upcoming') %>%
         mutate(log_usersrated = log1p(usersrated)) %>%
         filter(!is.na(yearpublished)) %>%
-        filter(bayesaverage > 0)
+        filter(usersrated > 1) 
+  #      filter(bayesaverage > 0)
 
 games_template = bgg_outcomes_recipe$template
 
@@ -217,6 +218,7 @@ preds_upcoming = bgg_outcomes_final_workflows %>%
                                    predict(new_data = games_upcoming_estimated) %>%
                                    bind_cols(., games_upcoming_estimated %>%
                                                      select(game_id, name, yearpublished))))
+
 ```
 
 
@@ -265,7 +267,7 @@ preds_upcoming_tidied %>%
                                  bayesaverage,
                                  usersrated),
                   by = c("game_id", "name")) %>%
-        filter(bayesaverage > 0) %>%
+    #@    filter(bayesaverage > 0) %>%
    #     rename(pred_xgbTree = usersrated_xgbTree) %>%
         rename(pred_stan = usersrated_stan,
                pred_xgbTree = usersrated_xgbTree) %>%
@@ -299,7 +301,7 @@ preds_upcoming_tidied %>%
                                  usersrated,
                                  average),
                   by = c("game_id", "name")) %>%
-        filter(bayesaverage > 0) %>%
+    #    filter(bayesaverage > 0) %>%
    #     rename(pred_xgbTree = average_xgbTree) %>%
         rename(pred_stan = average_stan,
                pred_xgbTree = average_xgbTree) %>%
@@ -313,7 +315,7 @@ preds_upcoming_tidied %>%
                UsersRated = usersrated,
                Average = average,
                Predicted = pred_xgbTree) %>%
-        select(ID, Published, Name, Average, Predicted) %>%
+        select(ID, Published, Name, UsersRated, Average, Predicted) %>%
         mutate_if(is.numeric, round, 2) %>%
   #      select(game_id, name, yearpublished, average, pred_stan, pred_xgbTree) %>%
         DT::datatable()
@@ -337,7 +339,7 @@ preds_upcoming_tidied %>%
                                  usersrated,
                                  bayesaverage),
                   by = c("game_id", "name")) %>%
-        filter(bayesaverage > 0) %>%
+ #       filter(bayesaverage > 0) %>%
         rename(pred_xgbTree = bayesaverage_indirect_xgbTree) %>%
         arrange(desc(pred_xgbTree)) %>%
         mutate_if(is.numeric, round, 2) %>%
@@ -374,7 +376,7 @@ preds_upcoming_tidied %>%
                                  name,
                                  bayesaverage),
                   by = c("game_id", "name")) %>%
-        filter(bayesaverage > 0) %>%
+    #    filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -448,7 +450,7 @@ preds_upcoming_tidied %>%
                                  name,
                                  bayesaverage),
                   by = c("game_id", "name")) %>%
-        filter(bayesaverage > 0) %>%
+   #     filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -522,7 +524,7 @@ preds_upcoming_tidied %>%
                                  name,
                                  bayesaverage),
                   by = c("game_id", "name")) %>%
-        filter(bayesaverage > 0) %>%
+   #     filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -596,7 +598,7 @@ preds_upcoming_tidied %>%
                                  name,
                                  bayesaverage),
                   by = c("game_id", "name")) %>%
-        filter(bayesaverage > 0) %>%
+      #  filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -679,7 +681,7 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_fantasy==1) %>% 
                                 pull(game_id))) %>%
-        filter(bayesaverage > 0) %>%
+       # filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -757,7 +759,7 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_economic==1) %>% 
                                 pull(game_id))) %>%
-        filter(bayesaverage > 0) %>%
+  #      filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -837,7 +839,7 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_wargame==1) %>% 
                                 pull(game_id))) %>%
-        filter(bayesaverage > 0) %>%
+     #   filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -916,7 +918,7 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_science_fiction==1) %>% 
                                 pull(game_id))) %>%
-        filter(bayesaverage > 0) %>%
+  #      filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
@@ -995,7 +997,7 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_party_game==1) %>% 
                                 pull(game_id))) %>%
-        filter(bayesaverage > 0) %>%
+     #   filter(bayesaverage > 0) %>%
         select(game_id, name, yearpublished, contains("xgbTree")) %>%
         rename(ID = game_id,
                Name = name,
