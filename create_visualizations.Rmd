@@ -17,7 +17,7 @@ params:
 knitr::opts_chunk$set(echo = F,
                       error=F,
                       dev="png",
-                      fig.width = 10,
+                      fig.width = 8,
                       fig.height = 8)
 
 options(knitr.duplicate.label = "allow")
@@ -157,7 +157,7 @@ games_model = active_games %>%
 
 How many games are there in the BGG database with at least 1 rating? More games are coming out every single year.
 
-```{r games over time}
+```{r games over time, fig.height=6, fig.width=10}
 
 active_games %>%
      #   filter(yearpublished < 2023) %>%
@@ -208,7 +208,7 @@ active_games %>%
 
 ## More People are Playing Games
 
-```{r user ratings over time, warning=F, message=F}
+```{r user ratings over time, fig.width=10, fig.height=6, warning=F, message=F}
 
 highlight_ids = c(1406,
                   13,
@@ -252,7 +252,7 @@ active_games %>%
 
 Average ratings by game over time.
 
-```{r average ratings over time}
+```{r average ratings over time, fig.height=6, fig.width=10}
 
 active_games %>%
         filter(usersrated > 10) %>%
@@ -277,11 +277,12 @@ active_games %>%
                     col = 'blue')
 
 ```
+
 ## All the Games You Like are Bad
 
 Show how many popular games are bad.
 
-```{r user ratings vs average, warning=F, message=F}
+```{r user ratings vs average, fig.width=10, fig.height=6, warning=F, message=F}
 
 bad_ids = c(1294,
             1406,
@@ -369,7 +370,7 @@ train_types = game_types %>%
 
 ## Families
 
-```{r examine average and baverage by family type, warning=F, message=F, fig.height=10, fig.width=10}
+```{r examine average and baverage by family type, warning=F, message=F, fig.height=8, fig.width=10}
 
 # set a minimum percentage
 minimum_prop = 0.005
@@ -509,7 +510,7 @@ Some features we won't include, such as the Mensa Select or implementations on B
 
 We'll do the same thing for categories, but this variable is much smaller and generally pretty well organized.
 
-```{r examine average and baverage by category,  warning=F, message=F, fig.height=10, fig.width=10}
+```{r examine average and baverage by category,  warning=F, message=F, fig.height=8, fig.width=10}
 
 # set a minimum percentage
 minimum_prop = 0.005
@@ -645,7 +646,7 @@ We'll include all of these, though there will likely be some overlap between the
 
 Mechanics are also pretty well organized, so we don't have to do much filtering.
 
-```{r now look at mechanics, fig.height=10, fig.width=10}
+```{r now look at mechanics, fig.height=8, fig.width=10}
 
 minimum_prop = 0.000
 
@@ -991,7 +992,7 @@ bgg_outcomes_final_workflows = readr::read_rds(here::here("models", "active", "b
 
 ### Linear Models
 
-```{r get stuff from the linear models for average, fig.height=10, fig.width=10}
+```{r get stuff from the linear models for average, fig.height=8, fig.width=10}
 
 stan_fits = bgg_outcomes_final_workflows %>% 
         filter(.id == 'average_tuned') %>%
@@ -1040,7 +1041,7 @@ stan_fits %>%
 
 ```
 
-```{r get stuff from the linear models for usersrated, fig.height=10, fig.width=10}
+```{r get stuff from the linear models for usersrated, fig.height=8, fig.width=10}
 
 stan_fits = bgg_outcomes_final_workflows %>% 
         filter(.id == 'usersrated_tuned') %>%
@@ -1145,7 +1146,7 @@ xgbTree_shap = xgbTree_fits %>%
 
 
 
-```{r examine the computed shapley values, fig.width=10, fig.height=10, warning=F}
+```{r examine the computed shapley values, fig.width=10, fig.height=8, warning=F}
 
 jitter_pos = ggforce::position_jitternormal(sd_x = 0, sd_y = 0.05)
 
@@ -1246,7 +1247,7 @@ top_vars %>%
         mutate(key = tidy_name_func(key)) %>%
         mutate(outcome = paste("outcome", gsub("_tuned", "", .id))) %>%
         ggplot(., aes(x = value,
-                      color = value,
+                   #   color = value,
                       y = reorder_within(key, var, outcome)))+
         geom_point(alpha = 0.45,
                    position = jitter_pos)+
@@ -1254,11 +1255,11 @@ top_vars %>%
         theme(legend.title = element_text())+
         ylab("Feature")+
         xlab("Shapley Value")+
-        scale_color_gradient2(low = "red",
-                              mid = "grey60",
-                              high = "blue",
-                              limits = c(-0.4, 0.4),
-                             oob = scales::squish)+
+        # scale_color_gradient2(low = "red",
+        #                       mid = "grey60",
+        #                       high = "blue",
+        #                       limits = c(-0.4, 0.4),
+        #                      oob = scales::squish)+
         guides(color = guide_colorbar(barwidth=10,
                                      barheight = 0.5,
                                      title = "Shapley Values",
@@ -1268,8 +1269,8 @@ top_vars %>%
                    linetype = 'dashed')+
         theme(legend.position = 'top')+
         scale_y_reordered()+
-        ggtitle("What Predict's the Average Rating?",
-                subtitle = str_wrap("Displaying Shapley values from xgbTree trained on average rating", 90))+
+        ggtitle("What Predict's the User RatingsRating?",
+                subtitle = str_wrap("Displaying Shapley values from xgbTree trained on number of user ratings", 90))+
         theme_phil()+
         theme(legend.title = element_text())
 
