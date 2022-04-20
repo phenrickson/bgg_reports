@@ -43,7 +43,7 @@ user_list = c("mrbananagrabber")
 # run through
 foreach(i=1:length(user_list)) %do% {
         
-        rmarkdown::render(here::here("predicting_user_collections.Rmd"), 
+        rmarkdown::render(here::here("notebooks", "predicting_user_collections.Rmd"), 
                           params = list(username = user_list[i],
                                         end_training_year = 2020),
                           output_file =  paste(gsub("\\%20", "", user_list[i]), 2020, sep="_"))
