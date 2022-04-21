@@ -259,6 +259,7 @@ active_games %>%
         filter(yearpublished > 1930) %>%
         ggplot(., aes(x=yearpublished,
                    #   size = usersrated,
+                   color = average,
                       y = average))+
         geom_point(alpha = 0.25,
                    color = 'grey40')+
@@ -268,13 +269,20 @@ active_games %>%
         ylab("Average Rating")+
         theme(legend.title = element_text())+
         guides(size = guide_legend(title.position = 'top',
-                                   title = 'Number of ratings'))+
+                                   title = 'Number of ratings'),
+               color = "none")+
+        scale_color_gradient2(low = 'red',
+                              mid = 'grey80',
+                              midpoint = 6.5,
+                              high = 'deepskyblue1',
+                              limits = c(4, 8),
+                              oob = scales::squish)+
         ggtitle("Are Games Getting Better?",
                 subtitle = str_wrap("Boardgamegeek average rating for games released since 1930, filtering to games with at least ten user ratings. Blue line indicates fit from local regression.", 90))+
         my_caption+
         geom_smooth(method = 'loess',
                     formula = 'y ~ x',
-                    col = 'blue')
+                    col = 'black')
 
 ```
 
@@ -1597,6 +1605,16 @@ foo$plot
 foo = game_shap_func2(input_workflows =  bgg_outcomes_final_workflows,
                     input_game_data = games_test %>%
                             filter(name == 'Sleeping Gods'))
+
+foo = game_shap_func2(input_workflows =  bgg_outcomes_final_workflows,
+                    input_game_data = games_test %>%
+                            filter(name == 'Carnegie'))
+
+foo$plot
+
+foo = game_shap_func2(input_workflows =  bgg_outcomes_final_workflows,
+                    input_game_data = games_test %>%
+                            filter(name == 'The Witcher: Old World'))
 
 foo$plot
 
