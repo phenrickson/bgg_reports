@@ -976,7 +976,6 @@ ggcorrplot(corr_mechanics, hc.order = TRUE, outline.color = "white")+
 
 # Visualizations from Models
 
-## How did the models do?
 
 ```{r put it into the model}
 
@@ -987,6 +986,102 @@ bgg_outcomes_recipe = readr::read_rds(here::here("models", "active", "base_recip
 bgg_outcomes_final_workflows = readr::read_rds(here::here("models", "active", "bgg_outcomes_final_workflows.Rds"))
 
 ```
+
+### How did the model learn?
+
+Plot the first tree and where it falls on the learning curve.
+
+```{r extract learning curve from the boosted trees and plot first iteration, fig.height=6, fig.width=10, message=F, warning=F}
+
+library(xgboost)
+library(DiagrammeR)
+
+xgbTree_mod = bgg_outcomes_final_workflows %>%
+        filter(.id == 'average_tuned' & wflow_id == 'full_xgbTree') %>%
+        mutate(fit = map(.workflow,
+                         ~ .x %>% extract_fit_parsnip())) %>%
+        pluck("fit", 1)
+
+# clean up the feature names
+xgbTree_mod$fit$feature_names = tidy_name_func(xgbTree_mod$fit$feature_names)
+
+# learning curve
+xgbTree_mod$fit$evaluation_log %>% 
+        ggplot(., aes(x=iter, y=training_rmse))+
+        geom_point(size=1.5, alpha = 0.5)+
+        geom_line(lwd=0.5)+
+        theme_phil()+
+        ggtitle("How Does a Model Learn?",
+                subtitle = str_wrap(paste("Learning curve for gradient boosted trees trained on average rating.", 90)))+
+        geom_segment(aes(x = 25, y = 3.8, xend = 5, yend = 4.2),
+               #      color = 'gold2',
+                     arrow = arrow(length = unit(0.25, "cm")))+
+        # geom_segment(aes(x = 25, y = 3.8, xend = 5, yend = 4.2),
+        #        #      color = 'gold2',
+        #              arrow = arrow(length = unit(0.25, "cm")))+
+        annotate("text",
+                 x = 50, 
+                 y = 3.7,
+                 label = "The model's first iteration.")+
+        xlab("Number of Iterations")+
+        ylab("Training Set Error (RMSE)")
+
+# first tree
+xgb.plot.tree(model = xgbTree_mod$fit, trees = 0, show_node_id = F, render=T)
+
+```
+
+Okay, now we try again.
+
+```{r extract learning curve from the boosted trees and plot fifth iteration, fig.height=6, fig.width=10, message=F, warning=F}
+
+# learning curve
+xgbTree_mod$fit$evaluation_log %>% 
+        ggplot(., aes(x=iter, y=training_rmse))+
+        geom_point(size=1.5, alpha = 0.5)+
+        geom_line(lwd=0.5)+
+        theme_phil()+
+        ggtitle("How Does a Model Learn?",
+                subtitle = str_wrap(paste("Learning curve for gradient boosted trees trained on average rating."), 90))+
+        geom_segment(aes(x = 25, y = 3.8, xend = 5, yend = 4.2),
+               #      color = 'gold2',
+                     arrow = arrow(length = unit(0.25, "cm")))+
+        geom_segment(aes(x = 30, y = 2, xend = 10, yend = 1.1),
+               #      color = 'gold2',
+                     arrow = arrow(length = unit(0.25, "cm")))+
+        annotate("text",
+                 x = 50, 
+                 y = 3.7,
+                 label = "The model's first iteration.")+
+        annotate("text",
+                 x = 55, 
+                 y = 2.2,
+                 label = "The model's fifth iteration.")+
+        xlab("Number of Iterations")+
+        ylab("Training Set Error (RMSE)")
+
+# next sets of trees
+xgb.plot.tree(model = xgbTree_mod$fit, trees = 4, show_node_id = F, render=T)
+
+# sets of trees
+xgb.plot.tree(model = xgbTree_mod$fit, trees = 5:10, show_node_id = F, render=T)
+
+# next sets of trees
+xgb.plot.tree(model = xgbTree_mod$fit, trees = 10:15, show_node_id = F, render=T)
+
+```
+
+Ensemble of the trees
+
+```{r ensemble of trees plot,fig.height=6, fig.width=10, message=F, warning=F}
+
+# first tree
+xgb.plot.multi.trees(model = xgbTree_mod$fit, 
+                     feature_names = xgbTree_mod$fit$feature_names,
+                     features_keep = 5)
+
+```
+
 
 ## What did they learn?
 

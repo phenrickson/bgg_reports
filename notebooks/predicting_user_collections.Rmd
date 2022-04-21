@@ -841,7 +841,7 @@ Decision trees are highly interpretible models that are easy to train and can id
 
 We can examine coefficients from another model we trained, which is a logistic regression with elastic net regularization (which I will refer to as a penalized logistic regression). Positive values indicate that a feature increases a user's probability of owning/rating a game, while negative values indicate a feature decreases the probability. To be precise, the coefficients indicate the effect of a particular feature on the log-odds of a user owning a game.
 
-```{r plot coefficients, echo=F, warning=F, message=F, fig.height=11, fig.width=10}
+```{r plot coefficients, echo=F, warning=F, message=F, fig.height=8, fig.width=10}
 
 owned_glmnet_train_fit = owned_validation_last_fits %>%
         filter(wflow_id == 'full_glmnet') %>% 

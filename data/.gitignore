@@ -1,2 +1,2 @@
-all_bgg_ids_raw.Rdata
-all_game_ids_tidied.Rdata
+data/all_bgg_ids_raw.Rdata
+data/all_game_ids_tidied.Rdata
