@@ -277,7 +277,7 @@ active_games %>%
                               limits = c(4, 8),
                               oob = scales::squish)+
         ggtitle("Are Games Getting Better?",
-                subtitle = str_wrap("Boardgamegeek average rating for games released since 1930, filtering to games with at least ten user ratings. Blue line indicates fit from local regression.", 90))+
+                subtitle = str_wrap("Boardgamegeek average rating for games released since 1930, filtering to games with at least ten user ratings. Black indicates fit from local regression.", 90))+
         my_caption+
         geom_smooth(method = 'loess',
                     formula = 'y ~ x',
