@@ -261,8 +261,7 @@ active_games %>%
                    #   size = usersrated,
                    color = average,
                       y = average))+
-        geom_point(alpha = 0.25,
-                   color = 'grey40')+
+        geom_point(alpha = 0.4)+
         my_caption+
         theme_phil()+
         xlab("Year")+

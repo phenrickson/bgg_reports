@@ -161,7 +161,9 @@ games_model = active_games %>%
         rename(numowned = owned)
 
 rm(game_types_pivoted,
-   game_types_selected)
+   game_types_selected,
+   game_types,
+   bgg_outcomes_recipe)
 
 # get most recent date
 most_recent_date = as.Date(games_model$timestamp[1])
@@ -186,7 +188,6 @@ games_upcoming = games_model %>%
 games_template = bgg_outcomes_recipe$template
 
 ```
-
 
 
 ```{r now get pieces we need}
@@ -242,6 +243,10 @@ preds_upcoming_tidied = preds_upcoming %>%
                ) %>%
         mutate_if(is.numeric, round, 2) %>%
         arrange(desc(bayesaverage_indirect_xgbTree))
+
+# save this to a location
+readr::write_rds(preds_upcoming_tidied,
+                 file = here::here("predictions", paste("bgg_outcomes_", Sys.Date(), ".Rdata", sep="")))
 
 ```
 
@@ -937,6 +942,164 @@ preds_upcoming_tidied %>%
         mutate_at(c("ID",
                        "Published"),
                   ~ as.character(.)) %>%
+        head(50) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Weight",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Weight"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Weight"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+
+```
+
+## Roll and Writes
+
+```{r Party average top 50}
+
+# boosted trees
+preds_upcoming_tidied %>%
+        gather("wflow", "pred",
+               -game_id, -name, -yearpublished) %>%
+   #     filter(grepl("bayesaverage", wflow)) %>%
+        spread(wflow, pred) %>%
+        left_join(., games_upcoming %>%
+                          select(game_id,
+                                 name,
+                                 bayesaverage),
+                  by = c("game_id", "name")) %>%
+        filter(game_id %in% 
+                       (games_upcoming %>%
+                                filter(family_mechanism_rollandwrite==1) %>% 
+                                pull(game_id))) %>%
+     #   filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")) %>%
+        rename(ID = game_id,
+               Name = name,
+               Published = yearpublished,
+               UserRatings = usersrated_xgbTree,
+               Weight = averageweight_xgbTree,
+               Average = average_xgbTree,
+               GeekRating = bayesaverage_indirect_xgbTree) %>%
+        arrange(desc(Weight)) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Rank, everything()) %>%
+        mutate_at(c("ID",
+                       "Published"),
+                  ~ as.character(.)) %>%
+        head(50) %>%
+        flextable() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Weight",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Weight"),
+             part = "header") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Weight"),
+                         align = "center",
+                         part = "all") %>%
+        add_header_row(values = 
+                               c("",
+                                 "",
+                                 "",
+                                 "",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated",
+                                 "Estimated")) %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit()
+
+
+```
+
+## Abstracts
+
+```{r abstract average top 50}
+
+# boosted trees
+preds_upcoming_tidied %>%
+        gather("wflow", "pred",
+               -game_id, -name, -yearpublished) %>%
+   #     filter(grepl("bayesaverage", wflow)) %>%
+        spread(wflow, pred) %>%
+        left_join(., games_upcoming %>%
+                          select(game_id,
+                                 name,
+                                 bayesaverage),
+                  by = c("game_id", "name")) %>%
+        filter(game_id %in% 
+                       (games_upcoming %>%
+                                filter(category_abstract_strategy==1) %>% 
+                                pull(game_id))) %>%
+     #   filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")) %>%
+        rename(ID = game_id,
+               Name = name,
+               Published = yearpublished,
+               UserRatings = usersrated_xgbTree,
+               Weight = averageweight_xgbTree,
+               Average = average_xgbTree,
+               GeekRating = bayesaverage_indirect_xgbTree) %>%
+        arrange(desc(Weight)) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
+        arrange(desc(Average)) %>%
+        mutate(Rank = row_number()) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Rank, everything()) %>%
+        mutate_at(c("ID",
+                       "Published"),
+                  ~ as.character(.)) %>%
         head(100) %>%
         flextable() %>%
         bg(j = "GeekRating",
@@ -977,6 +1140,7 @@ preds_upcoming_tidied %>%
 
 
 ```
+
 
 ## Party
 
