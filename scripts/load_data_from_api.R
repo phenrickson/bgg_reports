@@ -40,7 +40,7 @@ all_game_ids<-DBI::dbGetQuery(bigquerycon,
                               'SELECT * FROM bgg.api_all_game_ids
                               where date = (SELECT MAX(date) as most_recent FROM bgg.api_all_game_ids)')
 
-# filter down to just ids
+# filter down to just a list of unique ids
 bgg_ids = all_game_ids %>%
         select(game_id) %>%
         pull() %>%
@@ -89,33 +89,33 @@ problems = check %>%
 length(problems) < 1
 
 # # rerun problem batches
-# batches_problems = foreach(b = 1:length(problems),
-#                            .errorhandling = 'pass') %do% {
-#                                    
-#                                    # push batch 
-#                                    out = get_bgg_api_data(batches[[problems[b]]])
-#                                    
-#                                    # pause to avoid taxing the API
-#                                    Sys.sleep(20)
-#                                    
-#                                    # print
-#                                    #  print(paste("batch", b, "of", length(batches), "complete"))
-#                                    cat(paste("batch", b, "of", length(problems), "complete"), sep="\n")
-#                                    
-#                                    # return
-#                                    out
-#                                    
-#                            }
+batches_problems = foreach(b = 1:length(problems),
+                           .errorhandling = 'pass') %do% {
+
+                                   # push batch
+                                   out = get_bgg_api_data(batches[[problems[b]]])
+
+                                   # pause to avoid taxing the API
+                                   Sys.sleep(20)
+
+                                   # print
+                                   #  print(paste("batch", b, "of", length(batches), "complete"))
+                                   cat(paste("batch", b, "of", length(problems), "complete"), sep="\n")
+
+                                   # return
+                                   out
+
+                           }
+
+
+# combine to ensure we have data for every batch
+batches_all = c(batches_returned,
+                batches_problems)
 # 
-# 
-# # combine to ensure we have data for every batch
-# batches_all = c(batches_returned,
-#                 batches_problems)
-# 
-# # fix
-# for (i in 1:length(problems)) {
-#         batches_returned[[problems[i]]] = batches_problems[[i]]
-# }
+# fix
+for (i in 1:length(problems)) {
+        batches_returned[[problems[i]]] = batches_problems[[i]]
+}
 # 
 # #batches_returned[[problems]] = batches_problems[[1]]
 # # check again
@@ -349,3 +349,6 @@ dbWriteTable(bigquerycon,
 
 ## all done
 print(paste("done."))
+
+rm(list=ls())
+gc()

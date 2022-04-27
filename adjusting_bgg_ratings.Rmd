@@ -140,10 +140,6 @@ active_games %>%
 
 ```
 
-The geek rating is the game's average plus around 1000 baseline 5.5 votes added, which serve as a prior to prevent games with few ratings from moving to the top of the geek list.
-
-## Average Rating and Complexity
-
 If we plot average rating of games vs their complexity, we can see that a game's rating is heavily correlated with its complexity.
 
 ```{r look at correlation between rating and weight, warning=F, echo=F}
@@ -210,8 +206,6 @@ active_games %>%
 
 ```
 
-## Average Rating and Time
-
 The average rating is also a function of time, as we see a general rise in the average for more recently released games.
 
 ```{r plot average rating over time, warning=F, message=F, echo=F}
@@ -263,7 +257,7 @@ active_games %>%
 
 ```
 
-## The Geek Rating
+## What is the Geek Rating?
 
 Now, so far we've just looked at the average rating, which is simply the average of community ratings for a given game. Most people care about the Geek ratings, uses a combination of the community average and the number of votes. In order to get a high Geek rating, a game need to both be well rated (a high average) *and* have a high enough number of user ratings. We can get a sense of how games map on both of these dimensions via a visualization I have come to dub 'the mountain'.
 
@@ -300,7 +294,7 @@ active_games %>%
 
 ```
 
-The geek rating is designed to capture a mix of being highly rated and popular. To achieve this, boardgamegeek used a form of Bayesian averaging, (roughly) starting every game off with 1000 votes at 5.5, which means that it takes a decent number of users rating the game to actually move the baseline rating. 
+The geek rating is designed to capture a mix of being highly rated and popular. To achieve this, boardgamegeek used a form of Bayesian averaging, (roughly) starting every game off with a set number votes at a lower value which means that it takes a decent number of users rating the game to actually move the geek rating away from this baseline.
 
 We can see this if we plot all games based on their average rating as well as their number ratings and size by the number of user ratings.
 
@@ -336,6 +330,146 @@ active_games %>%
 
 
 ```
+
+BGG hasn't, to my knowledge, ever made it clear how precisely they compute the geek rating. I've seen other people try to reconstruct it, and the general consensus seems to be that they add about 1500 5.5 dummy votes to every game.
+
+
+```{r estimating the number of dummy votes}
+
+average_par = seq(5.2, 5.8,0.1)
+ratings_par = seq(500, 2500, by = 50)
+
+input_games = active_games %>%
+        filter(bayesaverage > 0) %>%
+        select(average, usersrated, bayesaverage)
+
+# loop over number of votes
+estimates <- 
+        foreach(j=1:length(ratings_par), .combine = bind_rows) %:% 
+                foreach(k = 1:length(average_par), .combine = bind_rows)  %do% {
+                
+                active_games %>%
+                        filter(bayesaverage > 0) %>%
+                        select(yearpublished, name, game_id, average, stddev, bayesaverage, usersrated) %>%
+                        mutate(est_bayesaverage = ((average * usersrated) + (average_par[k]* ratings_par[j])) / (usersrated + ratings_par[j])) %>%
+                        mutate(dummy_ratings = ratings_par[j]) %>%
+                        mutate(dummy_average = average_par[k])
+                
+        }
+
+```
+
+```{r facet by number of ratings}
+library(yardstick)
+reg_metrics = metric_set(yardstick::rmse,
+                         yardstick::mae,
+                         yardstick::rsq)
+
+estimates %>%
+        group_by(dummy_ratings, dummy_average) %>%
+        reg_metrics(bayesaverage, est_bayesaverage) %>%
+        mutate(dummy_average = factor(dummy_average)) %>%
+        ggplot(., aes(x=dummy_ratings,
+                      color = dummy_average,
+                      y=.estimate))+
+        geom_line()+
+        theme_minimal()+
+        scale_color_viridis_d()+
+        geom_hline(yintercept = 0,
+                   linetype = 'dotted')+
+        facet_wrap(.metric ~.,
+                   ncol = 2,
+                   scales = "free_y")
+
+estimates %>%
+        group_by(dummy_ratings, dummy_average) %>%
+        reg_metrics(bayesaverage, est_bayesaverage) %>%
+        filter(.metric %in% c('rmse', 'mae')) %>%
+        group_by(.metric) %>%
+        slice_min(order_by = .estimate,
+                  n = 1) %>%
+        bind_rows(., 
+                  estimates %>%
+                          group_by(dummy_ratings, dummy_average) %>%
+                          reg_metrics(bayesaverage, est_bayesaverage) %>%
+                          filter(.metric %in% c('rsq')) %>%
+                          group_by(.metric) %>%
+                          slice_max(order_by = .estimate, n=1)) %>%
+        mutate_if(is.numeric, round, 3)
+
+```
+We actually get the closest with roughly around 1900 votes at 5.5. What are our misses when we use this as our formula? I've seen some people specualte it's a function of the standard deviation.
+
+```{r examine estimate vs actual at our best, warning=F, message=F}
+
+estimates %>%
+        filter(dummy_ratings == 1850 & dummy_average == 5.5) %>%
+        mutate(diff = est_bayesaverage-bayesaverage) %>%
+        ggplot(., aes(x=diff))+
+        geom_histogram(binwidth = 0.005)+
+        theme_phil()
+        
+
+estimates %>%
+        filter(dummy_ratings == 1850 & dummy_average == 5.5) %>%
+        mutate(diff = est_bayesaverage-bayesaverage) %>%
+        ggplot(., aes(x=stddev,
+                      label = name,
+                      y=diff))+
+        geom_point(alpha = 0.25)+
+        theme_phil()+
+        geom_text(check_overlap = T,
+                  size = 2,
+                  vjust = -1)
+        # mutate_if(is.numeric, round, 2) %>%
+        # select(yearpublished, name, stddev, bayesaverage, est_bayesaverage, diff) %>%
+        # arrange(diff) %>%
+        # DT::datatable()
+
+# estimates %>%
+#         mutate(highlight = case_when(abs(est_bayesaverage-bayesaverage) > 0.01)) %>%
+#         ggplot(., aes(x=est_bayesaverage,
+#                       label = name,
+#                       y=bayesaverage))+
+#         geom_point(alpha = 0.5)+
+#         geom_text(size = 3,
+#                   check_overlap=T,
+#                   vjust = -1)+
+#         theme_phil()
+
+```
+It doesn't look to be case, but it is interesting looking at the games where the actual geek rating is *super* different than my estimated version. Alien: USCSS Nostromo, The Fantasy Trip: Legacy Edition and the Binding of Isaac have really big differences, and if we look on BGG they all seem to either have a disproportionate amount of 1s or 10s. I wonder if in the Geek rating they filter out ratings from accounts that are flagged as just spamming ratings?
+
+I've also seen people wonder whether they add more ratings to older/newer games. But I haven't seen any real evidence of a difference by the yearpublished.
+
+```{r look at difference between estimated vs actual}
+
+estimates %>%
+        mutate(decade = plyr::round_any(yearpublished, 5, floor)) %>%
+        filter(decade > 1950) %>%
+        filter(dummy_ratings < 2200 & dummy_ratings > 1200) %>%
+        group_by(decade, dummy_ratings, dummy_average) %>%
+        yardstick::mae(bayesaverage, est_bayesaverage) %>%
+        filter(dummy_average == 5.5) %>%
+        ggplot(., aes(x=decade, 
+                      y= dummy_ratings,
+                      label = round(.estimate,3),
+                      fill = .estimate))+
+        geom_tile(color = 'white')+
+        geom_text(color = 'white', size=2.5)+
+        scale_fill_gradient(low = 'deepskyblue1',
+                            high = 'red')+
+        theme_minimal()
+
+```
+At any rate, we should be good to go by using roughly 1800 dummy votes at 5.5.
+
+```{r rm some object from memory}
+
+rm(estimates)
+
+```
+
 
 # Adjusting for Complexity
 
@@ -432,7 +566,8 @@ complexity_model %>%
         theme_phil()
 
 ```
-The point of the residuals is that they are the variation in a game's average rating that is not explained by complexity, meaning we will see no correlation between complexity and the residuals.
+
+The point of the residuals is that they are the variation in a game's average rating that is not explained by complexity, meaning we will see no correlation between complexity and these residuals.
 
 ```{r residuals vs complexity, echo=F, warning=F, message=F}
 
@@ -475,7 +610,7 @@ complexity_model %>%
 
 ## Computing Complexity-Adjusted Ratings
 
-We will adjust this using an approach similar to their Bayesian averaging methodology, adding 1000 ratings at the average of 5.5
+We will adjust this using an approach similar to their Bayesian averaging methodology, adding 1800 ratings at the average of 5.5
 
 ```{r adjusted averages, warning=F, message=F, echo=F}
 
@@ -484,7 +619,7 @@ complexity_adjusted_ratings <- complexity_model %>%
         select(data, augmented) %>%
         unnest() %>%
         mutate(adj_average = .resid + mean(average, na.rm=T)) %>%
-        mutate(adj_bayesaverage = ((usersrated*adj_average) + (5.5*1000)) / (usersrated + 1000)) %>%
+        mutate(adj_bayesaverage = ((usersrated*adj_average) + (5.5*1800)) / (usersrated + 1800)) %>%
         arrange(desc(adj_bayesaverage)) %>%
         mutate(adj_rank = row_number(),
                date = as.Date(timestamp),
@@ -626,13 +761,19 @@ complexity_adjusted_ratings %>%
         mutate_if(is.numeric, round, 2) %>%
         mutate(geekrating = bayesaverage,
                adjustedrating = adj_bayesaverage) %>%
-        select(date, name, geekrating, adjustedrating, rating_diff) %>%
+        select(date, name, averageweight, geekrating, adjustedrating, rating_diff) %>%
         head(50) %>%
         flextable() %>%
         flextable::autofit() %>%
-        bg(j = c("rating_diff"),
-           bg = diff_func) %>%
-        flextable::align(j = "rating_diff",
+        bg(j = c("averageweight"),
+           bg = complexity_col_func) %>%
+        bg(j = c("geekrating",
+                 "adjustedrating"),
+           bg = bayesaverage_col_func) %>%
+        flextable::align(j = c("averageweight",
+                               "geekrating",
+                               "adjustedrating",
+                               "rating_diff"),
                          align = "center")
 
 ```
@@ -655,15 +796,20 @@ complexity_adjusted_ratings %>%
         mutate_if(is.numeric, round, 2) %>%
         mutate(geekrating = bayesaverage,
                adjustedrating = adj_bayesaverage) %>%
-        select(date, name, geekrating, adjustedrating, rating_diff) %>%
+        select(date, name, averageweight, geekrating, adjustedrating, rating_diff) %>%
         head(50) %>%
         flextable() %>%
         flextable::autofit() %>%
-        bg(j = c("rating_diff"),
-           bg = diff_func) %>%
-        flextable::align(j = "rating_diff",
+        bg(j = c("averageweight"),
+           bg = complexity_col_func) %>%
+        bg(j = c("geekrating",
+                 "adjustedrating"),
+           bg = bayesaverage_col_func) %>%
+        flextable::align(j = c("averageweight",
+                               "geekrating",
+                               "adjustedrating",
+                               "rating_diff"),
                          align = "center")
-
 ```
 
 ### Movement Within the BGG Top 100
@@ -688,7 +834,14 @@ complexity_adjusted_ratings %>%
         select(date, name, geekrating, adjustedrating, rank_diff) %>%
         arrange(desc(rank_diff)) %>%
         flextable() %>%
-        flextable::autofit() 
+        flextable::autofit()  %>%
+                bg(j = c("geekrating",
+                 "adjustedrating"),
+           bg = bayesaverage_col_func) %>%
+        flextable::align(j = c("geekrating",
+                               "adjustedrating",
+                               "rank_diff"),
+                         align = "center")
 ```
 
 It's important to remember that this is meant to be a ranking list for someone who sees complexity as a negative moreso than a positive. Terra Mystica and Gaia Project might be great games for someone like me who is into the hobby, but would it rank highly for someone who isn't that keen on games? Probably not.
@@ -725,7 +878,7 @@ active_games %>%
 
 ```
 
-Why do newer games so quickly climb the geek list? This is basically due to the fact that BGG **continues to use ~ 1000 votes to start its Bayesian average**, even as the size of the hobby has grown. This was probably a good prior for when board games had a much smaller audience, but as BGG and the hobby has grown, **newer games rapidly attract enough user ratings that they manage to quickly overtake this prior**.
+Why do newer games so quickly climb the geek list? I would argue that this due to the fact that the geek rating doesn't use enough votes to start its Bayesian average. 1800 votes or so was probably a good prior for when board games had a much smaller audience, but as BGG and the hobby has grown, **newer games rapidly attract enough user ratings that they manage to quickly overtake this prior**.
 
 If we plot the average and median user ratings for games published in each year, we can see how more recently published games draw lots of user ratings (though this does start to taper off for games in the last 1-2 years, though we would expect this to go up as these games accumulate user ratings).
 
@@ -752,7 +905,7 @@ active_games %>%
 
 This isn't a problem per se, but it does mean that two games might actually be pretty similar in quality, but the one released more recently draws lots of user ratings, and so it gets a big boost to its rating on the Geek list.
 
-### Is this a problem?
+### Is the Hotness a Problem?
 
 I'm not going to argue that this is a fundamental flaw in the rating that the site uses. But I do think it has changed the meaning of the rating over time. Presumably, the idea behind using the Bayesian average is to indicate games that combine both popularity and a high rating. On some level, we'd like the ratings to be that intersection of 'these are games that have been well received and are very popular'. 
 
@@ -804,7 +957,7 @@ active_games %>%
 
 ### Amending the Formula
 
-Fortunately for us, we can adjust for this in a pretty simple way by **upping the number of baseline 5.5 votes for every single game**. Rather than using the 1000 or so that BGG uses, we'll toggle the number of baseline ratings at various thresholds up to 100,000 votes and see how the rankings start to change. Games that maintain a high ranking at each threshold will be games that have both a large number of user ratings and a high average. Games that are sensitive to the number of baseline user ratings will be ones that are 'inflated' in the current ranking system.
+Fortunately for us, we can adjust for this in a pretty simple way by **upping the number of baseline 5.5 votes for every single game**. Rather than using the 1800 or so that BGG uses, we'll toggle the number of baseline ratings at various thresholds up to 100,000 votes and see how the rankings start to change. Games that maintain a high ranking at each threshold will be games that have both a large number of user ratings and a high average. Games that are sensitive to the number of baseline user ratings will be ones that are 'inflated' in the current ranking system.
 
 ```{r adjust the number of games, warning=F, echo=F} 
 

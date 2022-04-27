@@ -14,7 +14,7 @@ library(rvest)
 # currently takes about an hour and 10 minutes
 all_bgg_ids_raw = get_all_bgg_ids(
         minpages = 1,
-        maxpages = 1356)
+        maxpages = 1359)
 
 # check length
 
