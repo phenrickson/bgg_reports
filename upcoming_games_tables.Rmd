@@ -575,7 +575,7 @@ preds_upcoming_tidied %>%
 
 ```
 
-# Top 50s by Year
+# Top 100s by Year
 
 In this section, I show the model's top 50 games by expected Geek Rating for individual years.
 
@@ -618,7 +618,7 @@ preds_upcoming_tidied %>%
         mutate_at(c("ID",
                        "Published"),
                   ~ as.character(.)) %>%
-        head(50) %>%
+        head(100) %>%
         flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
         bg(j = "GeekRating",
            bg = bayesaverage_col_func) %>%
@@ -703,7 +703,7 @@ preds_upcoming_tidied %>%
         mutate_at(c("ID",
                        "Published"),
                   ~ as.character(.)) %>%
-        head(50) %>%
+        head(100) %>%
         flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
         bg(j = "GeekRating",
            bg = bayesaverage_col_func) %>%
@@ -788,7 +788,7 @@ preds_upcoming_tidied %>%
         mutate_at(c("ID",
                        "Published"),
                   ~ as.character(.)) %>%
-        head(50) %>%
+        head(100) %>%
         flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
         bg(j = "GeekRating",
            bg = bayesaverage_col_func) %>%
