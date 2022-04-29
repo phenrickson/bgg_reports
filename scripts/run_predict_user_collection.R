@@ -1,6 +1,51 @@
 # run user notebook
 library(tidyverse)
 library(foreach)
+source(here::here("scripts/load_packages.R"))
+source(here::here("functions/theme_phil.R"))
+library(patchwork)
+
+# connect to bigquery
+library(bigrquery)
+
+# get project credentials
+PROJECT_ID <- "gcp-analytics-326219"
+BUCKET_NAME <- "test-bucket"
+
+# authorize
+bq_auth(email = "phil.henrickson@aebs.com")
+
+# establish connection
+bigquerycon<-dbConnect(
+        bigrquery::bigquery(),
+        project = PROJECT_ID,
+        dataset = "bgg"
+)
+
+# query table of game info to most recent load
+active_games<-DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_game_info
+                              where timestamp = (SELECT MAX(timestamp) as most_recent FROM bgg.api_game_info)') %>%
+        select(-starts_with("rank")) %>%
+        mutate(numweights = as.numeric(numweights)) %>%
+        mutate_at(c("averageweight",
+                    "playingtime",
+                    "minplaytime",
+                    "maxplaytime",
+                    "yearpublished"),
+                  ~ case_when(. == 0 ~ NA_real_,
+                              TRUE ~ .))
+
+# ugh, made a mistake in the schema...
+
+# create caption for plots
+my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
+                                       paste("Data and analysis at github.com/phenrickson/bgg"), sep="\n")))
+
+
+# long table with game type variables
+game_types= DBI::dbGetQuery(bigquerycon, 
+                            'SELECT * FROM bgg.api_game_categories')
 
 # test 
 # get user collection
@@ -37,18 +82,26 @@ run_user_collection = function(input_user_list,
 }
 
 # load in users previously modeled
-user_files = list.files("/Users/phenrickson/Documents/projects/bgg/predict_user_collections/user_reports") %>%
-        as_tibble() %>%
-        filter(grepl(".html", value)) %>%
-        separate(value, into = c("username", "leftover"), sep=".html") %>%
-        select(username) %>%
-        mutate(username = substr(username, 1, nchar(username)-5)) %>%
-        pull(username) %>%
-        unique()
+# user_files = list.files("/Users/phenrickson/Documents/projects/bgg/predict_user_collections/user_reports") %>%
+#         as_tibble() %>%
+#         filter(grepl(".html", value)) %>%
+#         separate(value, into = c("username", "leftover"), sep=".html") %>%
+#         select(username) %>%
+#         mutate(username = substr(username, 1, nchar(username)-5)) %>%
+#         pull(username) %>%
+#         unique()
+
+# or specify a list of users
+user_files = c("Gyges",
+               "ZeeGarcia",
+               "Quinns",
+               "rahdo",
+               "Watch%20It%20Played",
+               "mrbananagrabber",
+               "GOBBluth89")
 
 # # run over specified user list
 users = gsub("_", "%20", user_files)
-
 
 # chgeck to see if collections are present first
 # run through list
@@ -69,10 +122,8 @@ users_passed = test_collections %>%
         ungroup() %>%
         filter(own ==1) %>%
         filter(n > 30) %>%
-        sample_n(25) %>%
+    #    sample_n(25) %>%
         pull(username)
-
-users_passed = "ZeeGarcia"
 
 # run users that passed through list
 foreach(i = 1:length(users_passed),

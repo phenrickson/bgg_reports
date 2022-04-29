@@ -2,49 +2,6 @@
 source(here::here("functions/get_bgg_data_from_github.R"))
 source(here::here("scripts/load_packages.R"))
 
-library(httr)
-library(xml2)
-library(XML)
-library(rvest)
-library(purrr)
-
-## using ids only via github, which only includes games that are at 30 ratings
-# # get todays data
-# bgg_today<-get_bgg_data_from_github(Sys.Date())
-# 
-# # get ids
-# bgg_ids = bgg_today %>%
-#         select(game_id) %>% 
-#         pull() %>%
-#         unique()
-
-
-## using ids pulled directly from bgg
-library(bigrquery)
-library(DBI)
-bq_auth(email = 'phil.henrickson@aebs.com')
-
-# get project credentials
-PROJECT_ID <- "gcp-analytics-326219"
-BUCKET_NAME <- "test-bucket"
-
-# establish connection
-bigquerycon<-dbConnect(
-        bigrquery::bigquery(),
-        project = PROJECT_ID,
-        dataset = "bgg"
-)
-
-# query table with all ids
-all_game_ids<-DBI::dbGetQuery(bigquerycon, 
-                              'SELECT * FROM bgg.api_all_game_ids
-                              where date = (SELECT MAX(date) as most_recent FROM bgg.api_all_game_ids)')
-
-# filter down to just a list of unique ids
-bgg_ids = all_game_ids %>%
-        select(game_id) %>%
-        pull() %>%
-        unique()
 
 # # push through API
 # samp_id = bgg_ids[1:100]
