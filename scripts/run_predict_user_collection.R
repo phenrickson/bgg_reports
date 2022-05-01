@@ -92,13 +92,15 @@ run_user_collection = function(input_user_list,
 #         unique()
 
 # or specify a list of users
-user_files = c("Gyges",
-               "ZeeGarcia",
-               "Quinns",
-               "rahdo",
-               "Watch%20It%20Played",
-               "mrbananagrabber",
-               "GOBBluth89")
+# user_files = c("Gyges",
+#                "ZeeGarcia",
+#                "Quinns",
+#                "rahdo",
+#                "Watch%20It%20Played",
+#                "mrbananagrabber",
+#                "GOBBluth89")
+
+user_files = c("comperio")
 
 # # run over specified user list
 users = gsub("_", "%20", user_files)

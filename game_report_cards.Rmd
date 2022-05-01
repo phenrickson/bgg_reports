@@ -9,7 +9,7 @@ output:
     keep_md: no
     fig.caption: yes
 params:
-  game_id: 295947
+  game_id: 321277
 ---
 
 ```{r setup, include=FALSE}
@@ -777,15 +777,20 @@ The following plot shows every game on BGG plotted on the first two principal co
 ```{r plot all games on PC1 and PC2, fig.height=8, fig.width=10, warning=F, message=F}
 
 game_and_neighbors = neighbors_cosine %>%
-        head(8) %>%
-        select(neighbor_name, neighbor_id) %>%
-        mutate(name = abbreviate(neighbor_name, 75))
+     #   head(8) %>%
+        select(game_id, name, neighbor_name, neighbor_id, neighbor_yearpublished) %>%
+        mutate(abbr_name = abbreviate(neighbor_name, 75)) %>%
+        mutate(abbr_name = case_when((name == neighbor_name) & (game_id != neighbor_id) ~ paste(neighbor_name, neighbor_yearpublished, sep=" "),
+                                         TRUE ~ neighbor_name)) %>%
+        select(neighbor_id, abbr_name)
 
 game_add_to_plot = pca_out %>%
-        filter(game_id %in% (neighbors_cosine %>% head(8) %>% pull(neighbor_id))) %>%
+        filter(game_id %in% (neighbors_cosine %>% pull(neighbor_id))) %>%
         mutate(name = abbreviate(name, 75)) %>%
+        left_join(., game_and_neighbors,
+                  by = c("game_id" = "neighbor_id")) %>%
         mutate(name = factor(name,
-                             levels = rev(game_and_neighbors$name)))
+                             levels = rev(game_and_neighbors$abbr_name)))
 
 set.seed(1999)
 p = pca_out %>%
@@ -812,11 +817,13 @@ p = pca_out %>%
                    linetype = 'dashed')
 
 set.seed(1999)
-p + geom_jitter(aes(color = name),
-                data = game_add_to_plot)+
-        geom_label_repel(aes(label = name,
-                             color = name),
-                  data = game_add_to_plot,
+p + geom_jitter(aes(color = abbr_name),
+                data = game_add_to_plot %>%
+                        head(8))+
+        geom_label_repel(aes(label = abbr_name,
+                             color = abbr_name),
+                  data = game_add_to_plot %>%
+                          head(8),
              size = 3)+
         #   position=position_jitter(width=0.2,height=0.2))+
         theme_phil()+

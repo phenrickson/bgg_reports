@@ -1219,6 +1219,10 @@ adjusted_ratings<-complexity_adjusted_ratings_out %>%
 fwrite(adjusted_ratings,
       file = here::here("adjusted_ratings", paste(Sys.Date(),".csv", sep="")))
 
+# save complexity model
+readr::write_rds(complexity_model, file = here::here("models", 
+                            "complexity_model.Rds"))
+
 # # model
 # readr::write_rds(complexity_model,
 #                  file = here::here("adjusted_bgg_ratings/models", paste("adjusted_bgg_ratings_model_", Sys.Date(), ".Rdata", sep="")))

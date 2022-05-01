@@ -106,6 +106,8 @@ game_shap_func = function(input_workflows,
                           order_by = abs(shap),
                           n = 15,
                           with_ties = F) %>%
+                mutate(value = case_when(key == 'time_per_player' ~ exp(value),
+                                         TRUE ~ value)) %>%
                 mutate(key = paste(tidy_name_func(key),
                                    "=",
                                    round(value, 2),
@@ -127,8 +129,8 @@ game_shap_func = function(input_workflows,
                 mutate_at(vars("actual", ".pred"),
                           ~ round(.,2)) %>%
                 mutate(tidy_subtitle = paste(tidy_outcome,
-                                             paste("Predicted:", .pred),
-                                             paste("Actual:", actual),
+                                             paste("Estimated:", .pred),
+                                             paste("Current:", actual),
                                              sep = "\n"))
         # 
         # # code for plotting
