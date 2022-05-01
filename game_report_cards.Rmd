@@ -1,0 +1,907 @@
+---
+title: "Individual Game Analysis"
+output: 
+  html_document:
+    toc: TRUE #adds a Table of Contents
+    theme: cerulean
+    number_sections: T #number your headings/sections
+    toc_float: TRUE #let your ToC follow you as you scroll
+    keep_md: no
+    fig.caption: yes
+params:
+  game_id: 295947
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = F,
+                      error=F,
+                      dev="png",
+                      fig.width = 9,
+                      fig.height = 6)
+
+options(knitr.duplicate.label = "allow")
+
+options(scipen=999)
+
+library(flextable)
+
+set_flextable_defaults(theme_fun = theme_alafoli,
+                       font.color = "black",
+  padding.bottom = 6, 
+  padding.top = 6,
+  padding.left = 6,
+  padding.right = 6,
+  background.color = "white")
+
+```
+
+```{r get game data from api, warning=F, message=F}
+
+game_data_from_api = get_bgg_api_data(params$game_id)
+
+```
+
+```{r set caption}
+
+# caption
+my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(game_data_from_api$timestamp))),
+                                       paste("Analysis at phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
+
+```
+
+
+```{r convert raw data from api into tables, include=F, show=F}
+
+# categories
+game_types = game_data_from_api$game_categories %>%
+        as_tibble() %>%
+        type_convert() %>%
+        mutate(id = as.integer(id),
+               type = gsub("boardgame", "", type))
+
+# playercounts
+game_playercounts = game_data_from_api$game_playercounts %>%
+        as_tibble() %>%
+        type_convert()
+
+# descriptions
+game_descriptions = game_data_from_api$game_description %>%
+        as_tibble()
+
+# names
+game_names = game_data_from_api$game_names %>%
+        as_tibble() 
+
+# images
+game_images =  game_data_from_api$game_image %>%
+        as_tibble() %>%
+        left_join(., 
+                  game_data_from_api$game_thumbnails %>%
+                          as_tibble(),
+                  by = c("game_id"),
+        )
+
+# features
+game_features = game_data_from_api$game_features %>%
+        as_tibble() %>%
+        type_convert() %>%
+        select(game_id,
+               yearpublished,
+               averageweight,
+               average,
+               bayesaverage,
+               usersrated,
+               stddev,
+               minage,
+               minplayers,
+               maxplayers,
+               playingtime,
+               minplaytime,
+               maxplaytime,
+               numcomments,
+               numweights,
+               owned,
+               trading,
+               wanting,
+               wishing
+        )
+
+# ranks
+game_ranks = game_data_from_api$game_ranks %>%
+        as_tibble()  %>%
+        filter(name %in% c("boardgame", 
+                           "childresngames",
+                           "cgs",
+                           "familygames",
+                           "partygames",
+                           "strategygames",
+                           "thematic",
+                           "wargames")) %>%
+        mutate(bayesaverage = case_when(bayesaverage == 'Not Ranked' ~ NA_character_,
+                                        TRUE ~ bayesaverage)) %>%
+        select(game_id, name, value, bayesaverage) %>%
+        type_convert() %>%
+        rename(rank = value) %>%
+        select(-bayesaverage) %>%
+        pivot_wider(id_cols = c("game_id"),
+                    names_from = c("name"),
+                    names_prefix = c("rank_"),
+                    values_from = c("rank"))
+
+# combine features and ranks
+game_info = game_features %>%
+        # left_join(., game_ranks,
+        #           by = c("game_id")) %>%
+        left_join(., game_names %>%
+                          filter(type == 'primary') %>%
+                          select(game_id, value) %>%
+                          rename(name = value),
+                  by = c("game_id")) %>%
+        select(game_id,
+               name, 
+               everything()) %>%
+        mutate(timestamp = Sys.time())
+
+```
+
+
+```{r get into format for a model}
+
+# laod in categorical feature selection we've made use of previously
+categorical_features_selected = readr::read_rds(here::here("data",
+                                                            "categorical_features_selected.Rdata"))
+
+# now join
+game_model = game_info %>%
+        left_join(.,
+                  game_types %>%
+        left_join(., categorical_features_selected %>%
+                          select(type, id, value, tidied, selected),
+                  by = c("type", "id", "value")) %>%
+        filter(selected == 'yes') %>%
+        select(game_id, type, value) %>%
+        mutate(type_abbrev = substr(type, 1, 3)) %>%
+        mutate(value = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+        mutate(type = paste(type, value, sep="_")) %>%
+        mutate(has_type = 1) %>%
+        select(-value) %>%
+        pivot_wider(names_from = c("type"),
+                            values_from = c("has_type"),
+                            id_cols = c("game_id"),
+                            names_sep = "_",
+                            values_fn = min,
+                            values_fill = 0),
+                  by = "game_id") %>%
+        rename(numowned = owned) %>%
+        bind_rows(.,
+                  games_template[0,]) %>%
+        select(names(games_template))
+
+```
+
+
+```{r predict, warning=F}
+
+# game_info with estimated averageweight
+upcoming_estimated_averageweight = bgg_outcomes_final_workflows %>%
+        as_tibble() %>%
+        filter(outcome == 'averageweight') %>%
+        filter(grepl("xgbTree", wflow_id)) %>%
+        mutate(preds = map(.workflow,
+                           ~ .x %>%
+                                   predict(new_data = game_model) %>%
+                                   bind_cols(., game_model %>%
+                                                     select(game_id)))) %>%
+        select(preds) %>%
+        unnest(preds)
+
+# put in estimated averageweight
+game_model_estimated = upcoming_estimated_averageweight %>%
+        rename(averageweight = .pred) %>%
+        left_join(., game_model %>%
+                          select(-averageweight),
+                  by = "game_id")
+
+# predicting the upcoming set
+game_preds = bgg_outcomes_final_workflows %>%
+        mutate(preds = map(.workflow,
+                           ~ .x %>%
+                                   predict(new_data = game_model_estimated) %>%
+                                   bind_cols(., game_model_estimated %>%
+                                                     select(game_id, name, yearpublished))))
+# and now comptue and spread out
+game_preds_tidied = game_preds %>%
+        select(outcome, wflow_id, preds) %>%
+        unnest() %>%
+        mutate(wflow_id = gsub("full_", "", gsub("all_", "", gsub("normalize_", "", wflow_id)))) %>%
+        mutate(.pred = case_when(outcome == 'usersrated' ~ plyr::round_any(exp(.pred), 100, ceiling),
+                                 TRUE ~ .pred)) %>%
+        pivot_wider(names_from = c("outcome", "wflow_id"),
+                    values_from = ".pred") %>%
+        mutate(bayesaverage_indirect_xgbTree = (
+                ((1800*5.5) + (usersrated_xgbTree*average_xgbTree)) /
+                        (1800 + usersrated_xgbTree))
+               ) %>%
+        mutate(bayesaverage_indirect_stan = (
+                ((1800*5.5) + (usersrated_stan*average_stan)) /
+                        (1800 + usersrated_stan))
+               ) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        arrange(desc(bayesaverage_indirect_xgbTree))
+
+```
+
+```{r nearest neighbors for estimated}
+
+# apply pca to game, bind to pca
+pca_out = pca_recipe %>%
+        prep(strings_as_factor = F) %>%
+        bake(new_data = bind_rows(game_model_estimated,
+                                  pca_recipe$template)) %>%
+        set_names(., gsub("PC0", "PC", gsub("PC00", "PC", names(.))))
+
+# get into matrix
+pca_mat = pca_out %>%
+        mutate(.row = row_number()) %>%
+        select(.row, starts_with("PC")) %>%
+        select(.row, all_of(number_pcs)) %>%
+        column_to_rownames(".row") %>%
+        as.matrix()
+
+# get row of game we want
+game_row = pca_out %>%
+        mutate(.row = row_number()) %>%
+        filter(game_id == params$game_id) %>%
+        pull(.row)
+
+# get cosine similarity between all games
+dist_cosine = dist_cosine_func(pca_mat)
+
+# get neighbors from cosine
+neighbors_cosine = find_neighbors_max_func(dist_cosine[game_row:(game_row+1),], 100) %>%
+        filter(.row == game_row) %>%
+        left_join(., pca_out %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, average, bayesaverage),
+                  by = c(".row")) %>%
+        left_join(., pca_out %>%
+                          mutate(.row_neighbor = row_number(),
+                                 neighbor_usersrated = usersrated,
+                                 neighbor_id = game_id,
+                                 neighbor_name = name,
+                                 neighbor_average = average,
+                                 neighbor_yearpublished = yearpublished,
+                                 neighbor_bayesaverage = bayesaverage) %>%
+                          select(.row_neighbor, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage, neighbor_usersrated, neighbor_yearpublished, starts_with("PC")),
+                  by = c(".row_neighbor")) %>%
+        left_join(., 
+                  pca_recipe$template %>% 
+                          select(game_id, averageweight) %>% 
+                          bind_rows(., game_model_estimated %>% 
+                                            select(game_id, averageweight)) %>%
+                          rename(neighbor_averageweight = averageweight,
+                                 neighbor_id = game_id),
+                  by = c("neighbor_id")) %>%
+        rename(similarity = dist) %>%
+        mutate(score = similarity*neighbor_bayesaverage)
+
+```
+
+# Game Profile
+
+```{r display images, fig.height=3.5, fig.width=10}
+
+library(cowplot)
+
+# cover
+game_vec = game_model %>%
+            rename(ID = game_id,
+               Published = yearpublished,
+               Average = average,
+               UserRatings = usersrated,
+               GeekRating= bayesaverage,
+               Weight = averageweight,
+               Name = name) %>%
+        mutate(`Player Count` = paste(minplayers, maxplayers, sep="-"),
+               `Playing Time` = paste(as.character(playingtime), " min", sep="")) %>%
+        mutate_if(is.numeric, replace_na, 0) %>%
+        select(ID, Published, `Player Count`, `Playing Time`) %>%
+        gather() %>%
+        mutate(together = paste(key, value, sep = ": ")) %>%
+        select(together) %>%
+        bind_rows(data.frame(together = game_model$name), .) %>%
+        pull() %>%
+        paste(collapse = "\n")
+
+p1 = ggdraw() + draw_image(game_images$image, scale = 0.9, 
+                           x=-0.1)
+
+p2 <- ggdraw() + draw_label(game_vec, 
+                            color = 'grey40',
+                            size = 16,
+                            x = -0.05,
+                            hjust = 0)
+
+plot_grid(p1, p2, rel_widths = c(1.3, 1))
+
+
+```
+
+## Estimated Outcomes on BGG
+
+This table displays the selected game's **current** values on four BGG outcomes (UsersRated, Average, GeekRating, Weight) along with my predictive model(s) **estimated** values for where these games are likely to end up. 
+
+```{r get predictions and actual for a first card}
+
+game_model %>%
+            rename(ID = game_id,
+               Published = yearpublished,
+               Average = average,
+               UserRatings = usersrated,
+               GeekRating= bayesaverage,
+               Weight = averageweight,
+               Name = name) %>%
+        mutate(`Player Count` = paste(minplayers, maxplayers, sep="-"),
+               `Playing Time` = paste(as.character(playingtime), " min", sep="")) %>%
+        mutate_if(is.numeric, replace_na, 0) %>%
+        # left_join(.,
+        #           estimated_values %>%
+        #                   rename(`Average ` = average,
+        #                          `Geek ` = baverage,
+        #                          `Complexity ` = avgweight),
+        #           by = c("ID" = "game_id")) %>%
+        mutate_if(is.numeric, round, 2) %>%
+       # mutate_if(is.numeric, as.character) %>%
+        mutate(Published = as.character(Published),
+               ID = as.character(ID)) %>%
+        mutate(Type = "Current") %>%
+        mutate(Date = Sys.Date()) %>%
+        select(Published, ID, Name, `Player Count`, `Playing Time`, Type, UserRatings, Average, GeekRating, Weight) %>%
+        bind_rows(., game_preds_tidied %>% 
+                          select(contains("xgbTree")) %>% 
+                          rename(Average = average_xgbTree, 
+                                 Weight = averageweight_xgbTree,
+                                 UserRatings = usersrated_xgbTree, 
+                                 GeekRating = bayesaverage_indirect_xgbTree) %>%
+                          mutate(Type = "Estimated") %>%
+                          select(Type, UserRatings, Average, GeekRating, Weight)) %>%       
+        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
+        flextable(col_keys = c("Published", "ID", "Name",
+                            #   "Player Count", "Playing Time",
+                               "Type", "UserRatings", "Average", "GeekRating", "Weight")) %>%
+        autofit() %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Weight",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        flextable::bold(j = c("UserRatings",
+                   "Average",
+                   "GeekRating",
+                   "Weight"),
+             part = "header") %>%
+        flextable::bold(j = c("Name",
+                              "ID"),
+                   part = "body") %>%
+        flextable::color(j = c("Name",
+                               "ID"),
+                         color ="skyblue3") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Weight"),
+                         align = "center",
+                         part = "all") %>%
+        compose(j= 3,
+                value = as_paragraph(
+                        hyperlink_text(x = Name,
+                                       url = Link)
+                )) %>%
+        compose(j= 2,
+                value = as_paragraph(
+                        hyperlink_text(x = ID,
+                                       url = Link)
+                ))
+
+```
+
+To see more information about the game on boardgamegeek, click on the game's ID or Name to go straight to the game's profile page.
+
+## Game Description
+
+```{r show game description}
+
+unescape_html <- function(str){
+  xml2::xml_text(xml2::read_html(paste0("<x>", str, "</x>")))
+}
+# library(jpeg)
+# library(png)
+# image = readJPEG(RCurl::getURL(game_images$thumbnail))
+# cover = download.file(game_images$image, file = paste(params$game_id, ".jpg", sep=""))
+# cover_img = []("https://cf.geekdo-images.com/MjeJZfulbsM1DSV3DrGJYA__original/img/B374C04Eip7fmQBGJzgiOTp-jyQ=/0x0/filters:format(jpeg)/pic5100691.jpg")
+
+game_descriptions %>%
+        mutate(Description = unescape_html(description)) %>% 
+        select(Description) %>%
+      #  mutate(Cover = game_images$thumbnail)
+      #  flextable(col_keys = c("Cover", "Description")) %>%
+        flextable() %>%
+        autofit()
+        # compose(j= 1,
+        #          value = as_image(
+        #                  src = Cover, width = .20, height = .15),
+        # )
+        #         
+```
+
+## Game Information
+
+Information on the game's designers, artists, families, mechanics and categories from BGG.
+
+```{r show game mechanics}
+
+publishers = game_types %>%
+        filter(type == 'publisher') %>%
+        select(value) 
+      #  rename(publishers = value)
+
+designers = game_types %>%
+        filter(type == 'designer') %>%
+        select(value)
+ #       rename(designers = value)
+
+artists = game_types %>%
+        filter(type == 'artist') %>%
+        select(value) 
+  #      rename(artists = value)
+
+mechanics = game_types %>%
+        filter(type == 'mechanic') %>%
+        select(value) 
+   #     rename(mechanics = value)
+
+categories = game_types %>%
+        filter(type == 'category') %>%
+        select(value) 
+#        rename(categories = value)
+
+families = game_types %>%
+        filter(type == 'family') %>%
+        select(value)
+ #       rename(families = value)
+
+# get maximum length
+max = max(c(nrow(publishers),
+            nrow(designers),
+            nrow(mechanics),
+            nrow(artists),
+            nrow(categories),
+            nrow(families)))
+
+# info ft
+info = game_info %>%
+        select(game_id,
+               name,
+               yearpublished) %>%
+        mutate_at(c("game_id", "yearpublished"),
+                                   ~ as.character(.))
+
+info_ft = info %>%
+        bind_rows(., 
+        rep(NA, times = max - nrow(info)+1) %>%
+                as_tibble) %>%
+        select(game_id, name, yearpublished)
+                  
+
+publisher_ft = publishers %>%
+        bind_rows(., 
+                  rep(NA, times =  max - nrow(publishers)+1) %>%
+                          as_tibble()) 
+
+designer_ft = designers %>%
+        bind_rows(., 
+                  rep(NA, times =  max - nrow(designers)+1) %>%
+                          as_tibble()) 
+
+artist_ft = artists %>%
+        bind_rows(., 
+                  rep(NA, times =  max - nrow(artists)+1) %>%
+                          as_tibble()) 
+        
+mech_ft = mechanics %>%
+        bind_rows(., 
+                  rep(NA, times =  max - nrow(mechanics)+1) %>%
+                          as_tibble())
+
+cat_ft = categories %>%
+        bind_rows(., 
+                  rep(NA, times =  max - nrow(categories)+1) %>%
+                          as_tibble())
+fam_ft = families %>%
+        bind_rows(., 
+                  rep(NA, times =  max - nrow(families)+1) %>%
+                          as_tibble())
+# combine to flextable
+cbind.data.frame(
+        info_ft,
+        publisher_ft,
+        designer_ft,
+         artist_ft,
+         cat_ft,
+        fam_ft,
+         mech_ft) %>%
+        set_names(., c("ID",
+                       "Name",
+                       "Published",
+                       "Publisher(s)", 
+                       "Designer(s)",
+                       "Artist(s)", 
+                       "Categories", 
+                       "Families",
+                       "Mechanics")) %>%
+        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
+        flextable(col_keys = c("Published", "ID", "Name", "Publisher(s)", "Designer(s)", "Artist(s)", "Categories", "Families", "Mechanics")) %>%
+        flextable::autofit() %>%
+    #    bold(part = "header") %>%
+        compose(j= 3,
+                value = as_paragraph(
+                        hyperlink_text(x = Name,
+                                       url = Link)
+                )) %>%
+        compose(j= 2,
+                value = as_paragraph(
+                        hyperlink_text(x = ID,
+                                       url = Link)
+                )) %>%
+        flextable::bold(j = c("ID", "Name"),
+                        part = "body") %>%
+        flextable::color(j = c("Name",
+                               "ID"),
+                         color ="skyblue3")
+
+```
+
+For the full profile of the selected game, click on the links in the table or go to `r paste("https://boardgamegeek.com/boardgame/", params$game_id, sep="")`
+
+## Explaining Predictions
+
+For each of the predictions above, I used models that were trained on historical boardgamegeek data in order to predict the selected game. How did the model(s) arrive at their predictions? The following plot displays Shapley values to indicate what features were most influential for the model's predictions. Anything in blue increased the model's predictions, anything in red decreased the model's predictions. 
+
+```{r show shapley values, fig.height=10, fig.width=10, warning=F, message=F}
+
+foo = game_shap_func(input_workflows =  bgg_outcomes_final_workflows,
+                    input_game_data = game_model)
+
+foo$plot
+
+```
+
+# Finding Similar Games 
+
+What games are similar to **`r paste(game_model$name[1])`**? I compare the selected game to every other game on boardgamegeek based on its mechanics, playing time, complexity, and game type. The tables below display the games which had the most similar data to **`r paste(game_model$name[1])`**. The reported similarity is the cosine similarity between the selected game and all other games published before 2021.
+
+This similarity score ranges from -1 to 1, where similarity of 1 indicates that games are exactly identical (a game will have a score of 1 with itself).
+
+**Note:** This analysis does not look at a game's ratings on BGG, publisher, artist, or designer - it focuses on finding similar games based on how they play, not how they are rated or by their theme.
+
+## Most Similar Games
+
+The table below displays games with the most similar data to `r paste(game_model$name[1])`. Click on a game's ID or Name to go straight to its profile on boardgamegeek.
+
+```{r show nearest neighbors in a table}
+
+neighbors_cosine %>%
+     #   select(game_id, name, similarity, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage, score) %>%
+        head(26) %>%
+    #    arrange(desc(score)) %>%
+    #    filter(neighbor_id != params$game_id) %>%
+        rename(`similarity*bayesaverage` = score) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        arrange(desc(similarity)) %>%
+        mutate_if(is.numeric, round,2) %>%
+        mutate(rank = row_number()-1) %>%
+        select(rank, neighbor_yearpublished, neighbor_id, neighbor_name, similarity,`similarity*bayesaverage`, neighbor_bayesaverage, neighbor_average, neighbor_averageweight, neighbor_usersrated) %>%
+        head(26) %>%
+        set_names(., gsub("Usersrated", "UserRatings", gsub("Geekrating", "GeekRating", str_to_title(gsub(" ", "", gsub("averageweight", "weight", gsub("yearpublished", "published", gsub("bayesaverage", "geek rating", gsub("neighbor_", "", names(.)))))))))) %>%
+        rename(ID = Id) %>%
+        select(Rank, everything()) %>%
+                        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
+        mutate(Rank = case_when(Rank == 0 ~ '--',
+                                TRUE ~ as.character(Rank))) %>%
+        mutate_at(c("ID",
+                  "Published"),
+                  ~ as.character(.)) %>%
+        flextable(col_keys = c("Rank", "Published", "ID", "Name", "Similarity", "GeekRating", "Average", "Weight", "UserRatings")) %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        # bg(j = "Similarity*GeekRating",
+        #    bg = score_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Weight",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bg(j = "Similarity",
+           bg = similarity_col_func) %>%
+        bold(j = c("Similarity"),
+                   # "Average",
+                   # "GeekRating",
+                   # "Weight"),
+             part = "all") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Weight"),
+                         align = "center",
+                         part = "all") %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit() %>%
+        compose(j= 3,
+                value = as_paragraph(
+                        hyperlink_text(x = ID,
+                                       url = Link)
+                )) %>%
+        compose(j= 4,
+                value = as_paragraph(
+                        hyperlink_text(x = Name,
+                                       url = Link)
+                )) %>%
+        bg(., i = 1,
+           bg = 'grey80') %>%
+        # flextable::bold(j = c("ID", "Name"),
+        #                 part = "body") %>%
+        flextable::color(j = c("Name",
+                               "ID"),
+                         color ="skyblue4") %>%
+        flextable::align(j = c("Similarity",
+      #        "Similarity*GeekRating",
+              "UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Weight"),
+                         align = "center",
+                         part = "all")
+
+```
+
+Click on the ID or Name for any game to go its profile page on boardgamegeek.
+
+
+## Most Similar, Highly Rated Games
+
+What games are similar to **`r paste(game_model$name[1])`** while also being highly rated by the boardgamegeek community? In this table I multiply every neighboring game's similarity score by its GeekRating. The resulting score is an attempt to balance these two quantities.
+
+```{r show nearest neighbors in a table sorting by score}
+
+neighbors_cosine %>%
+        filter(neighbor_id == params$game_id) %>%
+        bind_rows(., neighbors_cosine %>%
+                       #   head(51) %>%
+                          filter(neighbor_id != params$game_id) %>%
+                          arrange(desc(score))) %>%
+    #    filter(neighbor_id != params$game_id) %>%
+        rename(`similarity*bayesaverage` = score) %>%
+        mutate_if(is.numeric, round, 2) %>%
+   #    arrange(desc(similarity)) %>%
+        mutate_if(is.numeric, round,2) %>%
+        mutate(rank = row_number()-1) %>%
+        select(rank, neighbor_yearpublished, neighbor_id, neighbor_name, similarity,`similarity*bayesaverage`, neighbor_bayesaverage, neighbor_average, neighbor_averageweight, neighbor_usersrated) %>%
+        head(26) %>%
+        set_names(., gsub("Usersrated", "UserRatings", gsub("Geekrating", "GeekRating", str_to_title(gsub(" ", "", gsub("averageweight", "weight", gsub("yearpublished", "published", gsub("bayesaverage", "geek rating", gsub("neighbor_", "", names(.)))))))))) %>%
+        rename(ID = Id) %>%
+        select(Rank, everything()) %>%
+                        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
+        mutate(Rank = case_when(Rank == 0 ~ '--',
+                                TRUE ~ as.character(Rank))) %>%
+        mutate_at(c("ID",
+                  "Published"),
+                  ~ as.character(.)) %>%
+        mutate(Score = `Similarity*GeekRating`) %>%
+        flextable(col_keys = c("Rank", "Published", "ID", "Name", "Score", "Similarity", "GeekRating", "Average", "Weight", "UserRatings")) %>%
+        bg(j = "GeekRating",
+           bg = bayesaverage_col_func) %>%
+        bg(j = "Score",
+           bg = score_col_func) %>%
+        bg(j="Average",
+          bg = average_col_func) %>%
+        bg(j = "Weight",
+           bg = complexity_col_func) %>%     
+        bg(j = "UserRatings",
+           bg = usersrated_col_func) %>%   
+        bg(j = "Similarity",
+           bg = similarity_col_func) %>%
+        bold(j = c("Score"),
+                   # "Average",
+                   # "GeekRating",
+                   # "Weight"),
+             part = "all") %>%
+        flextable::align(j = c("UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Weight"),
+                         align = "center",
+                         part = "all") %>%
+        merge_h(part = "header") %>%
+        # hline(j = c("UsersRated",
+        #                          "Average",
+        #                          "GeekRating",
+        #                          "Complexity"), 
+        #       part = "header") %>%
+        autofit() %>%
+        compose(j= 3,
+                value = as_paragraph(
+                        hyperlink_text(x = ID,
+                                       url = Link)
+                )) %>%
+        compose(j= 4,
+                value = as_paragraph(
+                        hyperlink_text(x = Name,
+                                       url = Link)
+                )) %>%
+        bg(., i = 1,
+           bg = 'grey80') %>%
+        # flextable::bold(j = c("ID", "Name"),
+        #                 part = "body") %>%
+        flextable::color(j = c("Name",
+                               "ID"),
+                         color ="skyblue4") %>%
+        flextable::align(j = c("Similarity",
+              "Score",
+              "UserRatings",
+                               "Average",
+                               "GeekRating",
+                               "Weight"),
+                         align = "center",
+                         part = "all")
+
+```
+
+## Why Are Games Considered Similar?
+
+I first ran a dimension reduction method (PCA) to identify the main points of variation for games on BGG. The first 25 components explained roughly 50% of the overall variation in the dataset, so I computed the cosine similarity between every game's score on these 25 components.
+
+### Plotting All Games
+
+The following plot shows every game on BGG plotted on the first two principal components of variation. I then highlight where the selected game and its nearest neighbors fall on these first two components.
+
+```{r plot all games on PC1 and PC2, fig.height=8, fig.width=10, warning=F, message=F}
+
+game_and_neighbors = neighbors_cosine %>%
+        head(8) %>%
+        select(neighbor_name, neighbor_id) %>%
+        mutate(name = abbreviate(neighbor_name, 75))
+
+game_add_to_plot = pca_out %>%
+        filter(game_id %in% (neighbors_cosine %>% head(8) %>% pull(neighbor_id))) %>%
+        mutate(name = abbreviate(name, 75)) %>%
+        mutate(name = factor(name,
+                             levels = rev(game_and_neighbors$name)))
+
+set.seed(1999)
+p = pca_out %>%
+        arrange(desc(bayesaverage)) %>%
+        mutate(rank = row_number()) %>%
+        mutate(name = case_when(rank < 1000 ~ name)) %>%
+        ggplot(., aes(x=PC1, 
+                label = name,
+                y=PC2))+
+        geom_jitter(color = 'grey60',
+                    alpha=0.15)+
+        geom_text(check_overlap = T,
+                  color = 'grey60',
+             size = 2,
+             vjust = -1)+
+        #   position=position_jitter(width=0.2,height=0.2))+
+        theme_phil()+
+        my_caption+
+        xlab("First Principal Component")+
+        ylab("Second Principal Component")+
+        geom_vline(xintercept = 0,
+                   linetype = 'dashed')+
+        geom_hline(yintercept =0,
+                   linetype = 'dashed')
+
+set.seed(1999)
+p + geom_jitter(aes(color = name),
+                data = game_add_to_plot)+
+        geom_label_repel(aes(label = name,
+                             color = name),
+                  data = game_add_to_plot,
+             size = 3)+
+        #   position=position_jitter(width=0.2,height=0.2))+
+        theme_phil()+
+        my_caption+
+        xlab("First Principal Component")+
+        ylab("Second Principal Component")+
+        geom_vline(xintercept = 0,
+                   linetype = 'dashed')+
+        geom_hline(yintercept =0,
+                   linetype = 'dashed')+
+        scale_color_viridis_d(option = 'A',
+                              begin = 0.8,
+                              end = 0)+
+        guides(color = "none",
+                       fill = "none")
+        
+        
+```
+
+### Game Profiles
+
+Similarity scores are based on 25 principal components - the next table displays the selected game and its neighbors profiles on each of these components.
+
+```{r make tile plot, fig.height = 8, fig.width=10}
+
+tile_plot(neighbors_cosine %>%
+                  head(26),
+          25,
+          params$game_id)+
+        ylab("Games")+
+        ggtitle("Why are Games Similar?",
+                subtitle = "Plotting game profiles on first 25 principal components of variation")
+
+```
+
+### Examining Components
+
+What are these components? The following plot shows which features contribute the most to each component.
+
+```{r show component loadings, fig.height=12, fig.width=10}
+
+plot_components+
+        ggtitle("PCA Component Loadings",
+                subtitle = str_wrap("Displaying top ten feature contributions to each principal component used to determine similarity", 90))+
+        my_caption
+
+
+```
+
+```{r rm for next run, message=F, warning=F}
+
+rm(artists,
+   artist_ft,
+   designer_ft,
+   fam_ft,
+   families,
+   game_and_neighbors,
+   game_ranks,
+   game_types,
+   neighbors_cosine,
+   game_preds,
+   game_preds_tidied,
+   game_playercounts,
+   game_add_to_plot,
+   game_data_from_api,
+   game_descriptions,
+   game_features,
+   game_images,
+   game_info,
+   game_model,
+   game_model_estimated,
+   game_names,
+   foo,
+   cat_ft,
+   info_ft,
+   mech_ft,
+   mechanics,
+   categories,
+   designers,
+   dist_cosine,
+   pca_mat,
+   pca_out,
+   publisher_ft,
+   publishers,
+   upcoming_estimated_averageweight)
+
+```
+
