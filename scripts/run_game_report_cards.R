@@ -229,7 +229,14 @@ bgg_ids = bgg_today %>%
         arrange(desc(bayes_average)) %>%
         pull(game_id)
 
-ids = 321277
+ids = c(259607,
+        304324,
+        321277,
+        330555,
+        339905,
+        341918,
+        344697,
+        346143)
         
 ###################################
 # run through

@@ -869,10 +869,10 @@ pca_trained = pca_mechanics_recipe %>%
         set_names(., gsub("PC0", "PC", gsub("PC00", "PC", names(.))))
 
 # save
-save(pca_mechanics_recipe,
+readr::write_rds(pca_mechanics_recipe,
      file = here::here("models", "repository", paste("pca_recipe_", Sys.Date(), ".Rds", sep="")))
 
-save(pca_trained,
+readr::write_rds(pca_mechanics_trained,
      file = here::here("models", "repository", paste("pca_trained_", Sys.Date(), ".Rds", sep="")))
 
 ```
@@ -987,11 +987,18 @@ tile_plot = function(neighbors_cosine,
 
 ```{r tile plot example, fig.height=8, fig.width=10, warning=F}
 
-tile_plot(neighbors_cosine,
+temp = 'The Hunger'
+
+tile_plot(neighbors_cosine %>%
+                  filter(neighbor_yearpublished < 2021 | neighbor_name == temp),
           25,
-          active_games %>% filter(name == 'Root') %>% pull(game_id)) +
+          active_games %>% filter(name == temp) %>% pull(game_id)) +
         ylab("Games")
 
+
+neighbors_cosine %>%
+        filter(neighbor_yearpublished < 2021 | neighbor_name == temp) %>%
+        filter(name == 'temp')
 ```
 
 
