@@ -247,27 +247,25 @@ I trained a variety of models on historical data from BGG in order to make predi
 For more details on my methodology, see my write up at:
 https://phenrickson.github.io/bgg_reports/predicting_bgg_outcomes.html
 
-# Top 100s
+```{r make a function for flextables}
 
-In this section, I display the model's top 100 games for the geek rating, average rating, and number of users rated. In each of the tables below, click on the name of the game in order to go directly to the game's boardgamegeek profile. 
-
-## Highest Expected Geek Rating
-
-```{r display preds for geek rating 100}
-
-# boosted trees
-preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-    #    filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
+make_heat_table_func = function(input_preds_table,
+                                sort_by,
+                                n) {
+        
+   #      preds_upcoming_tidied %>%
+   #      gather("wflow", "pred",
+   #             -game_id, -name, -yearpublished) %>%
+   # #     filter(grepl("bayesaverage", wflow)) %>%
+   #      spread(wflow, pred) %>%
+   #      left_join(., games_upcoming %>%
+   #                        select(game_id,
+   #                               name,
+   #                               bayesaverage),
+   #                by = c("game_id", "name")) %>%
+   #  #    filter(bayesaverage > 0) %>%
+   #      select(game_id, name, yearpublished, contains("xgbTree")) %>%
+        input_preds_table %>%
         rename(ID = game_id,
                Name = name,
                Published = yearpublished,
@@ -275,18 +273,20 @@ preds_upcoming_tidied %>%
                Weight = averageweight_xgbTree,
                Average = average_xgbTree,
                GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(GeekRating)) %>%
+        arrange(desc(!!enquo(sort_by))) %>%
         mutate_if(is.numeric, round, 2) %>%
         select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
+   #     arrange(desc(GeekRating)) %>%
         mutate(Rank = row_number()) %>%
         mutate_if(is.numeric, round, 2) %>%
         select(Rank, everything()) %>%
-                        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
+                mutate(UserRatings = as.integer(UserRatings)) %>%
+        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
+        mutate(Report = paste("https://phenrickson.github.io/game_report_cards/", ID, ".html", sep="")) %>%
         mutate_at(c("ID",
                        "Published"),
                   ~ as.character(.)) %>%
-        head(100) %>%
+        head(n) %>%
         flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
         bg(j = "GeekRating",
            bg = bayesaverage_col_func) %>%
@@ -323,93 +323,94 @@ preds_upcoming_tidied %>%
         #                          "Complexity"), 
         #       part = "header") %>%
         autofit() %>%
+        compose(j= 3,
+                value = as_paragraph(
+                        hyperlink_text(x = ID,
+                                       url = Link)
+                )) %>%
         compose(j= 4,
                 value = as_paragraph(
                         hyperlink_text(x = Name,
                                        url = Link)
+                )) %>%
+        flextable::color(j = c("Name",
+                               "ID"),
+                         color ="skyblue4") %>%
+        compose(j= 5,
+                value = as_paragraph(
+                        hyperlink_text(x = UserRatings,
+                                       url = Report)
+                )) %>%
+        compose(j= 6,
+                value = as_paragraph(
+                        hyperlink_text(x = Weight,
+                                       url = Report)
+                )) %>%
+        compose(j= 7,
+                value = as_paragraph(
+                        hyperlink_text(x = Average,
+                                       url = Report)
+                )) %>%
+        compose(j= 8,
+                value = as_paragraph(
+                        hyperlink_text(x = GeekRating,
+                                       url = Report)
                 ))
+        
+}
+
+```
 
 
+# Top 100s
+
+In this section, I display the model's top 100 games for the geek rating, average rating, and number of users rated. In each of the tables below, click on the name of the game in order to go directly to the game's boardgamegeek profile, or click on any of the estimated values to go to a report showing how the model arrived at its predictions, along with some other analyses.
+
+## Highest Expected Geek Rating
+
+```{r display preds for geek rating 100}
+
+
+make_heat_table_func(
+        preds_upcoming_tidied %>%
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+           #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+            #    filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        100
+   )
+
+ 
 ```
 
 ## Highest Expected Average Rating 
 
 ```{r display preds for average rating 100}
 
-# boosted trees
-preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-   #     filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(Average)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(100) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
+make_heat_table_func(
+        preds_upcoming_tidied %>%
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+           #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+            #    filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
+        Average,
+        100
+   )
 
 ```
 
@@ -417,79 +418,22 @@ preds_upcoming_tidied %>%
 
 ```{r display preds for userrating 100}
 
-# boosted trees
-preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-   #     filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(UserRatings)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(100) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
+make_heat_table_func(
+        preds_upcoming_tidied %>%
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+           #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+            #    filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
+        UserRatings,
+        100
+   )
 
 
 ```
@@ -498,80 +442,22 @@ preds_upcoming_tidied %>%
 
 ```{r display preds for weight 100}
 
-# boosted trees
-preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-      #  filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(Weight)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
+make_heat_table_func(
+        preds_upcoming_tidied %>%
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+           #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+            #    filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
+        Weight,
+        100
+   )
 
 ```
 
@@ -583,8 +469,9 @@ In this section, I show the model's top 50 games by expected Geek Rating for ind
 
 ```{r show by year 2021}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -599,68 +486,10 @@ preds_upcoming_tidied %>%
                                 filter(yearpublished == 2021) %>%
                                 pull(game_id))) %>%
        # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(100) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        100
+   )
 
 ```
 
@@ -668,8 +497,9 @@ preds_upcoming_tidied %>%
 
 ```{r show by year 2022}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -684,67 +514,10 @@ preds_upcoming_tidied %>%
                                 filter(yearpublished == 2022) %>%
                                 pull(game_id))) %>%
        # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(100) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        100
+   )
 
 
 ```
@@ -754,7 +527,9 @@ preds_upcoming_tidied %>%
 ```{r show by year 2023}
 
 # boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -769,68 +544,10 @@ preds_upcoming_tidied %>%
                                 filter(yearpublished == 2023) %>%
                                 pull(game_id))) %>%
        # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(100) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        100
+   )
 
 ```
 
@@ -842,8 +559,8 @@ In this section, I show games sorted by their expected Geek Rating (a combinatio
 
 ```{r fantasy average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -858,68 +575,10 @@ preds_upcoming_tidied %>%
                                 filter(category_fantasy==1) %>% 
                                 pull(game_id))) %>%
        # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
 
 ```
 
@@ -927,8 +586,8 @@ preds_upcoming_tidied %>%
 
 ```{r Economic average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -942,68 +601,11 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_economic==1) %>% 
                                 pull(game_id))) %>%
-  #      filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                  mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
 
 
 ```
@@ -1013,8 +615,8 @@ preds_upcoming_tidied %>%
 
 ```{r Wargame average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -1028,68 +630,12 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_wargame==1) %>% 
                                 pull(game_id))) %>%
-     #   filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                    mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
+
 
 
 ```
@@ -1098,8 +644,8 @@ preds_upcoming_tidied %>%
 
 ```{r Science Fiction average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -1113,70 +659,11 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_science_fiction==1) %>% 
                                 pull(game_id))) %>%
-  #      filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-                mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
-
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
 
 ```
 
@@ -1184,8 +671,8 @@ preds_upcoming_tidied %>%
 
 ```{r roll and writes top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -1199,68 +686,11 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(family_mechanism_rollandwrite==1) %>% 
                                 pull(game_id))) %>%
-     #   filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-              mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
 
 
 
@@ -1270,8 +700,8 @@ preds_upcoming_tidied %>%
 
 ```{r abstract average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -1285,68 +715,11 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_abstract_strategy==1) %>% 
                                 pull(game_id))) %>%
-     #   filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
 
 
 ```
@@ -1356,8 +729,8 @@ preds_upcoming_tidied %>%
 
 ```{r Party average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -1371,70 +744,11 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_party_game==1) %>% 
                                 pull(game_id))) %>%
-     #   filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(Average)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
-
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
 
 ```
 
@@ -1442,8 +756,8 @@ preds_upcoming_tidied %>%
 
 ```{r  card average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -1457,68 +771,12 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(category_card_game==1) %>% 
                                 pull(game_id))) %>%
-     #   filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
+
 
 
 ```
@@ -1527,8 +785,8 @@ preds_upcoming_tidied %>%
 
 ```{r two player average top 50}
 
-# boosted trees
-preds_upcoming_tidied %>%
+make_heat_table_func(
+        preds_upcoming_tidied %>%
         gather("wflow", "pred",
                -game_id, -name, -yearpublished) %>%
    #     filter(grepl("bayesaverage", wflow)) %>%
@@ -1542,69 +800,11 @@ preds_upcoming_tidied %>%
                        (games_upcoming %>%
                                 filter(family_players_two_player_only_games==1) %>% 
                                 pull(game_id))) %>%
-     #   filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(Weight)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-        arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
-        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                ))
-
+       # filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("xgbTree")),
+        GeekRating,
+        50
+   )
 
 ```
 
