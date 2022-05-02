@@ -53,7 +53,7 @@ Rather than trying to predict how the boardgamegeek community will rate a game, 
 
 [my brother](GOBbluth89_2020.html)
 
-4. [**Finding Boardgame "Neighbors"**]():
+<!-- 4. [**Finding Boardgame "Neighbors"**](): -->
 
-#
+<!-- # -->
 
