@@ -282,7 +282,7 @@ make_heat_table_func = function(input_preds_table,
         select(Rank, everything()) %>%
                 mutate(UserRatings = as.integer(UserRatings)) %>%
         mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate(Report = paste("https://phenrickson.github.io/game_report_cards/", ID, ".html", sep="")) %>%
+        mutate(Report = paste("https://phenrickson.github.io/bgg_reports/game_report_cards/", ID, ".html", sep="")) %>%
         mutate_at(c("ID",
                        "Published"),
                   ~ as.character(.)) %>%
