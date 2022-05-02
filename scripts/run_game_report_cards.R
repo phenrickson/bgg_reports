@@ -165,7 +165,7 @@ tile_plot = function(neighbors_cosine,
                               fill = value,
                               x=component))+
                 geom_tile()+
-                geom_text(color = 'white', size=3)+
+                geom_text(color = 'white', size=2)+
                 # scale_fill_viridis(limits = c(-8, 8),
                 #                    oob = scales::squish)+
                 # scale_fill_viridis(option = "A",
@@ -219,25 +219,46 @@ plot_components = pca_trained %>%
                              high = "navy",
                              oob = scales::squish)
 
+# get games predicted list
+preds = readr::read_rds(here::here("predictions", "bgg_outcomes_2022-05-01.Rdata"))
 
-###############################################
-### get ids from github #######
-bgg_today = get_bgg_data_from_github(Sys.Date())
+# get games in report files
+reports_run = list.files(here::here("game_report_cards")) %>%
+        as_tibble() %>%
+        separate(value, into = c("game_id","file"), sep="\\.") %>%
+        mutate(game_id = as.numeric(game_id)) %>%
+        filter(!is.na(game_id)) %>%
+        mutate(report = 'yes')
 
-bgg_ids = bgg_today %>%
-        filter(game_release_year %in% c(2021, 2022, 2023)) %>%
-        arrange(desc(bayes_average)) %>%
-        pull(game_id)
+# get list not run
+ids = preds %>%
+        arrange(desc(bayesaverage_indirect_xgbTree)) %>%
+        select(game_id, name, yearpublished) %>%
+        left_join(., reports_run,
+                  by = c("game_id")) %>%
+        filter(is.na(report)) %>%
+        filter(yearpublished > 2021) %>%
+        head(200)
 
-ids = c(259607,
-        304324,
-        321277,
-        330555,
-        339905,
-        341918,
-        344697,
-        346143)
-        
+# ###############################################
+# ### get ids from github #######
+# bgg_today = get_bgg_data_from_github(Sys.Date())
+# 
+# 
+# bgg_ids = bgg_today %>%
+#         filter(game_release_year %in% c(2021, 2022, 2023)) %>%
+#         arrange(desc(bayes_average)) %>%
+#         pull(game_id)
+# 
+# ids = c(259607,
+#         304324,
+#         321277,
+#         330555,
+#         339905,
+#         341918,
+#         344697,
+#         346143)
+#         
 ###################################
 # run through
 foreach(i=1:length(ids),
