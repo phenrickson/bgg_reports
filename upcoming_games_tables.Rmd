@@ -175,7 +175,7 @@ games_upcoming = games_model %>%
         mutate(dataset = 'upcoming') %>%
         mutate(log_usersrated = log1p(usersrated)) %>%
         filter(!is.na(yearpublished)) %>%
-        filter(usersrated > 1) 
+        filter(usersrated > 5) 
   #      filter(bayesaverage > 0)
 
 games_template = bgg_outcomes_recipe$template
@@ -335,27 +335,28 @@ make_heat_table_func = function(input_preds_table,
                 )) %>%
         flextable::color(j = c("Name",
                                "ID"),
-                         color ="skyblue4") %>%
-        compose(j= 5,
-                value = as_paragraph(
-                        hyperlink_text(x = UserRatings,
-                                       url = Report)
-                )) %>%
-        compose(j= 6,
-                value = as_paragraph(
-                        hyperlink_text(x = Weight,
-                                       url = Report)
-                )) %>%
-        compose(j= 7,
-                value = as_paragraph(
-                        hyperlink_text(x = Average,
-                                       url = Report)
-                )) %>%
-        compose(j= 8,
-                value = as_paragraph(
-                        hyperlink_text(x = GeekRating,
-                                       url = Report)
-                ))
+                         color ="skyblue4")
+        #%>%
+        # compose(j= 5,
+        #         value = as_paragraph(
+        #                 hyperlink_text(x = UserRatings,
+        #                                url = Report)
+        #         )) %>%
+        # compose(j= 6,
+        #         value = as_paragraph(
+        #                 hyperlink_text(x = Weight,
+        #                                url = Report)
+        #         )) %>%
+        # compose(j= 7,
+        #         value = as_paragraph(
+        #                 hyperlink_text(x = Average,
+        #                                url = Report)
+        #         )) %>%
+        # compose(j= 8,
+        #         value = as_paragraph(
+        #                 hyperlink_text(x = GeekRating,
+        #                                url = Report)
+        #         ))
         
 }
 
@@ -364,7 +365,8 @@ make_heat_table_func = function(input_preds_table,
 
 # Top 100s
 
-In this section, I display the model's top 100 games for the geek rating, average rating, and number of users rated. In each of the tables below, click on the name of the game in order to go directly to the game's boardgamegeek profile, or click on any of the estimated values to go to a report showing how the model arrived at its predictions, along with some other analyses.
+In this section, I display the model's top 100 games for the geek rating, average rating, and number of users rated. In each of the tables below, click on the name of the game in order to go directly to the game's boardgamegeek profile.
+<!-- or click on any of the estimated values to go to a report showing how the model arrived at its predictions, along with some other analyses. -->
 
 ## Highest Expected Geek Rating
 

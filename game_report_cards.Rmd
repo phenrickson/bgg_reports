@@ -17,7 +17,7 @@ params:
 knitr::opts_chunk$set(echo = F,
                       error=F,
                       dev="png",
-                      fig.width = 9,
+                      fig.width = 8,
                       fig.height = 6)
 
 options(knitr.duplicate.label = "allow")
@@ -770,82 +770,86 @@ neighbors_cosine %>%
 
 I first ran a dimension reduction method (PCA) to identify the main points of variation for games on BGG. The first 25 components explained roughly 50% of the overall variation in the dataset, so I computed the cosine similarity between every game's score on these 25 components.
 
-### Plotting All Games
+```{r stash extra code, eval=F}
 
-The following plot shows every game on BGG plotted on the first two principal components of variation. I then highlight where the selected game and its nearest neighbors fall on these first two components.
+# <!-- ### Plotting All Games -->
+# 
+# <!-- The following plot shows every game on BGG plotted on the first two principal components of variation. I then highlight where the selected game and its nearest neighbors fall on these first two components. -->
+# 
+# <!-- ```{r plot all games on PC1 and PC2, fig.height=8, fig.width=10, warning=F, message=F} -->
+# 
+# <!-- game_and_neighbors = neighbors_cosine %>% -->
+# <!--      #   head(8) %>% -->
+# <!--         select(game_id, name, neighbor_name, neighbor_id, neighbor_yearpublished) %>% -->
+# <!--         mutate(abbr_name = abbreviate(neighbor_name, 75)) %>% -->
+# <!--         mutate(abbr_name = case_when((name == neighbor_name) & (game_id != neighbor_id) ~ paste(neighbor_name, neighbor_yearpublished, sep=" "), -->
+# <!--                                          TRUE ~ neighbor_name)) %>% -->
+# <!--         select(neighbor_id, abbr_name) -->
+# 
+# <!-- game_add_to_plot = pca_out %>% -->
+# <!--         filter(game_id %in% (neighbors_cosine %>% pull(neighbor_id))) %>% -->
+# <!--         mutate(name = abbreviate(name, 75)) %>% -->
+# <!--         left_join(., game_and_neighbors, -->
+# <!--                   by = c("game_id" = "neighbor_id")) %>% -->
+# <!--         mutate(name = factor(name, -->
+# <!--                              levels = rev(game_and_neighbors$abbr_name))) -->
+# 
+# <!-- set.seed(1999) -->
+# <!-- p = pca_out %>% -->
+# <!--         arrange(desc(bayesaverage)) %>% -->
+# <!--         mutate(rank = row_number()) %>% -->
+# <!--         mutate(name = case_when(rank < 1000 ~ name)) %>% -->
+# <!--         ggplot(., aes(x=PC1, -->
+# <!--                 label = name, -->
+# <!--                 y=PC2))+ -->
+# <!--         geom_jitter(color = 'grey60', -->
+# <!--                     alpha=0.15)+ -->
+# <!--         geom_text(check_overlap = T, -->
+# <!--                   color = 'grey60', -->
+# <!--              size = 2, -->
+# <!--              vjust = -1)+ -->
+# <!--         #   position=position_jitter(width=0.2,height=0.2))+ -->
+# <!--         theme_phil()+ -->
+# <!--         my_caption+ -->
+# <!--         xlab("First Principal Component")+ -->
+# <!--         ylab("Second Principal Component")+ -->
+# <!--         geom_vline(xintercept = 0, -->
+# <!--                    linetype = 'dashed')+ -->
+# <!--         geom_hline(yintercept =0, -->
+# <!--                    linetype = 'dashed') -->
+# 
+# <!-- set.seed(1999) -->
+# <!-- p + geom_jitter(aes(color = abbr_name), -->
+# <!--                 data = game_add_to_plot %>% -->
+# <!--                         head(8))+ -->
+# <!--         geom_label_repel(aes(label = abbr_name, -->
+# <!--                              color = abbr_name), -->
+# <!--                   data = game_add_to_plot %>% -->
+# <!--                           head(8), -->
+# <!--              size = 3)+ -->
+# <!--         #   position=position_jitter(width=0.2,height=0.2))+ -->
+# <!--         theme_phil()+ -->
+# <!--         my_caption+ -->
+# <!--         xlab("First Principal Component")+ -->
+# <!--         ylab("Second Principal Component")+ -->
+# <!--         geom_vline(xintercept = 0, -->
+# <!--                    linetype = 'dashed')+ -->
+# <!--         geom_hline(yintercept =0, -->
+# <!--                    linetype = 'dashed')+ -->
+# <!--         scale_color_viridis_d(option = 'A', -->
+# <!--                               begin = 0.8, -->
+# <!--                               end = 0)+ -->
+# <!--         guides(color = "none", -->
+# <!--                        fill = "none") -->
+# 
+# 
+# <!-- ``` -->
 
-```{r plot all games on PC1 and PC2, fig.height=8, fig.width=10, warning=F, message=F}
-
-game_and_neighbors = neighbors_cosine %>%
-     #   head(8) %>%
-        select(game_id, name, neighbor_name, neighbor_id, neighbor_yearpublished) %>%
-        mutate(abbr_name = abbreviate(neighbor_name, 75)) %>%
-        mutate(abbr_name = case_when((name == neighbor_name) & (game_id != neighbor_id) ~ paste(neighbor_name, neighbor_yearpublished, sep=" "),
-                                         TRUE ~ neighbor_name)) %>%
-        select(neighbor_id, abbr_name)
-
-game_add_to_plot = pca_out %>%
-        filter(game_id %in% (neighbors_cosine %>% pull(neighbor_id))) %>%
-        mutate(name = abbreviate(name, 75)) %>%
-        left_join(., game_and_neighbors,
-                  by = c("game_id" = "neighbor_id")) %>%
-        mutate(name = factor(name,
-                             levels = rev(game_and_neighbors$abbr_name)))
-
-set.seed(1999)
-p = pca_out %>%
-        arrange(desc(bayesaverage)) %>%
-        mutate(rank = row_number()) %>%
-        mutate(name = case_when(rank < 1000 ~ name)) %>%
-        ggplot(., aes(x=PC1, 
-                label = name,
-                y=PC2))+
-        geom_jitter(color = 'grey60',
-                    alpha=0.15)+
-        geom_text(check_overlap = T,
-                  color = 'grey60',
-             size = 2,
-             vjust = -1)+
-        #   position=position_jitter(width=0.2,height=0.2))+
-        theme_phil()+
-        my_caption+
-        xlab("First Principal Component")+
-        ylab("Second Principal Component")+
-        geom_vline(xintercept = 0,
-                   linetype = 'dashed')+
-        geom_hline(yintercept =0,
-                   linetype = 'dashed')
-
-set.seed(1999)
-p + geom_jitter(aes(color = abbr_name),
-                data = game_add_to_plot %>%
-                        head(8))+
-        geom_label_repel(aes(label = abbr_name,
-                             color = abbr_name),
-                  data = game_add_to_plot %>%
-                          head(8),
-             size = 3)+
-        #   position=position_jitter(width=0.2,height=0.2))+
-        theme_phil()+
-        my_caption+
-        xlab("First Principal Component")+
-        ylab("Second Principal Component")+
-        geom_vline(xintercept = 0,
-                   linetype = 'dashed')+
-        geom_hline(yintercept =0,
-                   linetype = 'dashed')+
-        scale_color_viridis_d(option = 'A',
-                              begin = 0.8,
-                              end = 0)+
-        guides(color = "none",
-                       fill = "none")
-        
-        
 ```
 
 ### Game Profiles
 
-Similarity scores are based on 25 principal components - the next table displays the selected game and its neighbors profiles on each of these components.
+This plotscores are based on 25 principal components - the next table displays the selected game and its neighbors profiles on each of these components.
 
 ```{r make tile plot, fig.height = 8, fig.width=10}
 
@@ -859,17 +863,15 @@ tile_plot(neighbors_cosine %>%
 
 ```
 
+```{r show component loadings, fig.height=8, fig.width=10, eval=F}
 ### Examining Components
 
-What are these components? The following plot shows which features contribute the most to each component.
-
-```{r show component loadings, fig.height=12, fig.width=10}
+#What are these components? The following plot shows which features contribute the most to each component.
 
 plot_components+
         ggtitle("PCA Component Loadings",
                 subtitle = str_wrap("Displaying top ten feature contributions to each principal component used to determine similarity", 90))+
         my_caption
-
 
 ```
 

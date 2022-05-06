@@ -992,7 +992,20 @@ bgg_outcomes_recipe = readr::read_rds(here::here("models", "active", "base_recip
 # load workflow
 bgg_outcomes_final_workflows = readr::read_rds(here::here("models", "active", "bgg_outcomes_final_workflows.Rds"))
 
+bgg_outcomes_final_workflows %>%
+        filter(grepl("xgbTree", wflow_id))
+
 ```
+
+```{r plot xgbTree}
+
+bgg_outcomes_final_workflows %>% 
+        filter(grepl("xgbTree", wflow_id)) %>%
+        filter(.id == 'average_tuned') %>%
+        pluck(".workflow", 1) %>% predict(games_model %>% mutate(dataset = 'validation', log_usersrated = log(usersrated)) %>% filter(yearpublished %in% c(2019, 2020)))
+
+```
+
 
 ### How did the model learn?
 
