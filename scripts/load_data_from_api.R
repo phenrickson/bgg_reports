@@ -2,9 +2,31 @@
 source(here::here("functions/get_bgg_data_from_github.R"))
 source(here::here("scripts/load_packages.R"))
 
+# connect to bigquery
+library(magrittr)
+library(odbc)
+library(bigrquery)
+#library(bigQueryR)
+library(DBI)
+library(keyring)
 
-# # push through API
-# samp_id = bgg_ids[1:100]
+# get project credentials
+PROJECT_ID <- "gcp-analytics-326219"
+BUCKET_NAME <- "test-bucket"
+
+bq_auth(email = 'phil.henrickson@aebs.com')
+
+# establish connection
+bigquerycon<-dbConnect(
+        bigrquery::bigquery(),
+        project = PROJECT_ID,
+        dataset = "bgg"
+)
+
+# get bgg ids from most recent load
+bgg_ids<-DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_all_game_ids
+                              where date = (SELECT MAX(date) as most_recent FROM bgg.api_all_game_ids)')
 
 # get previously saved function for getting bgg data from api
 source(here::here("functions/get_bgg_data_from_api.R"))
