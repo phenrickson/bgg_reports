@@ -29,4 +29,13 @@ vignettes/*.pdf
 user_workflows
 .DS_Store
 models
+adjusting_bgg_ratings_files
 raw
+predicting_user_collections_files
+game_report_cards_files
+create_visualizations_files
+adjusting_bgg_ratings.html
+adjusted_ratings_table.html
+create_visualizations.html
+game_report_cards.html
+index.html
