@@ -8,7 +8,7 @@ output:
     keep_md: no
     fig.caption: yes
 params:
-  username: "Watch%20It%20Played"
+  username: "mrbananagrabber"
   end_training_year: 2020
   min_training_ratings: 30
 ---
@@ -26,10 +26,10 @@ options(knitr.duplicate.label = "allow")
 
 options(scipen=999)
 
-# source
-# source(here::here("scripts/load_packages.R"))
-# source(here::here("functions/theme_phil.R"))
-#ibrary(patchwork)
+source
+source(here::here("scripts/load_packages.R"))
+source(here::here("functions/theme_phil.R"))
+library(patchwork)
 
 set_flextable_defaults(theme_fun = theme_booktabs,
                        font.color = "black",
@@ -41,7 +41,7 @@ set_flextable_defaults(theme_fun = theme_booktabs,
 
 ```
 
-```{r connect to big query and query tables we need, warning=F, message=F, eval=F, results='hide'}
+```{r connect to big query and query tables we need, warning=F, message=F, eval=T, results='hide'}
 
 library(bigrquery)
 
