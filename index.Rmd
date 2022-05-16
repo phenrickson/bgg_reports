@@ -7,7 +7,7 @@ pagetitle: "Phil Henrickson"
 
 If you love boardgames and data, [**boardgamegeek.com**](https://boardgamegeek.com) is a treasure chest, with data from thousands of users on every boardgame in existence. What can we learn from this data? These are the projects I've been working on using techniques from data science with data from BGG. 
 
-1. [**Predicting BGG's Top Upcoming Games**](predicting_bgg_outcomes.html)
+1. [**Predicting BGG's Top Upcoming Games**](upcoming_games_tables.html)
 
 <center>
 
@@ -39,19 +39,19 @@ I use a variety techniques to make adjustments to the Geek rating on boardgamege
 
 Rather than trying to predict how the boardgamegeek community will rate a game, I train models at the individual user level to predict whether someone will be likely to add an upcoming game to their collection. This started as a project to [train a model to identify games for myself](mrbananagrabber_2020.html), but then I realized that this could be extended to anyone with a boardgamegeek account and a decent number of games in their collection. This analysis can be run for anyone, so I've run it for a few prominent reviewers to see what upcoming games they're most likely to be interested in:
 
-[Watch It Played](Watch_It_Played_2020.html)
+[Watch It Played](user_reports/Watch_It_Played_2020.html)
 
-[Mark Bigney (So Very Wrong About Games)](Gyges_2020.html)
+[Mark Bigney (So Very Wrong About Games)](user_reports/Gyges_2020.html)
 
-[rahdo](rahdo_2020.html)
+[rahdo](user_reports/rahdo_2020.html)
 
-[Quinns (Shut Up and Sit Down, though his data is a bit out of date)](Quinns_2020.html)
+[Quinns (Shut Up and Sit Down, though his data is a bit out of date)](user_reports/Quinns_2020.html)
 
-[Zee Garcia (The Dice Tower)](ZeeGarcia_2020.html)
+[Zee Garcia (The Dice Tower)](user_reports/ZeeGarcia_2020.html)
 
-[me](rahdo_2020.html)
+[me](user_reports/rahdo_2020.html)
 
-[my brother](GOBbluth89_2020.html)
+[my brother](user_reports/GOBbluth89_2020.html)
 
 <!-- 4. [**Finding Boardgame "Neighbors"**](): -->
 
