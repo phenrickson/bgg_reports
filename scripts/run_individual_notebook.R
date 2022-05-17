@@ -1,15 +1,3 @@
-# run user notebook
-# user_list = c("legendarydromedary",
-#               "lmageezy",
-#               "C3Gaming",
-#               "innerkudzu",
-#               "Karmatic",
-#               "camerinjohnston")
-#user_list = c("jyothi")
-# user_list = c("Booned",
-#               "QWERTYMartin")
-# user_list = c("Aeszett")
-
 library(tidyverse)
 library(foreach)
 
@@ -26,14 +14,14 @@ library(foreach)
 
 #user_list = c("DTLibrary")
 
-user_list = c("mrbananagrabber")
-              # "Watch%20It%20Played",
-              # "Quinns",
-              # "rahdo",
-              # "ZeeGarcia",
-              # "Gyges",
-              # "mrbananagrabber",
-              # "GOBBluth89")
+user_list = c("mrbananagrabber",
+              "Watch%20It%20Played",
+              "Quinns",
+              "rahdo",
+              "ZeeGarcia",
+              "Gyges",
+              "mrbananagrabber",
+              "GOBBluth89")
 
 # user_list = c("
               # "ZeeGarcia",

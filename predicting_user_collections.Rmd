@@ -26,7 +26,7 @@ options(knitr.duplicate.label = "allow")
 
 options(scipen=999)
 
-source
+#source
 source(here::here("scripts/load_packages.R"))
 source(here::here("functions/theme_phil.R"))
 library(patchwork)
@@ -1895,14 +1895,47 @@ bind_rows(owned_upcoming_probs,
 ```{r save workflows, warning=F, message=F, results = 'hide'}
 
 user_owned_workflow = owned_final_fits %>%
-        pluck(".workflow", 1)
+        mutate(username = tidy_username) %>%
+        select(username, wflow_id, .workflow) %>%
+        mutate(outcome = 'owned') %>%
+        select(username, wflow_id, outcome, .workflow)
+   #     select(username, wflow_id, splits, .predictions, best_tune, .metrics, .workflow)
+
+```
+
+```{r authenticate to google cloud storage, warning=F, message=F}
+
+#specify bucket and json
+Sys.setenv('GCS_AUTH_FILE' = '/Users/Phil/Documents/gcp-analytics-326219-c76fe0dc89d8.json')
+
+# should auto authenticate
+library(googleCloudStorageR)
+
+# save to GCS
+gcs_save(user_owned_workflow,
+         file = paste("bgg", "user", "owned", tidy_username, "workflow.Rds", sep="_"),
+         bucket = "phil_model_storage")
+
+# gcs_list_objects(bucket = 'phil_model_storage')
+# 
+# gcs_load(file = paste("bgg", "user", "owned", tidy_username, "workflow.Rds", sep="_"),
+#          bucket = 'phil_model_storage')
+
+```
+
+```{r save locally}
 
 suppressWarnings({
 suppressMessages({
-save(user_owned_workflow,
+readr::write_rds(user_owned_workflow,
      file = here::here("user_workflows",  paste(tidy_username, "owned_workflow.Rds", sep="_")))
 })
 })
+
+```
+
+
+```{r rm objects from memory}
 
 rm(user_owned_workflow,
    owned_upcoming_probs,

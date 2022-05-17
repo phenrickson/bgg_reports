@@ -3,49 +3,52 @@ library(tidyverse)
 library(foreach)
 source(here::here("scripts/load_packages.R"))
 source(here::here("functions/theme_phil.R"))
-library(patchwork)
 
-# connect to bigquery
-library(bigrquery)
+Sys.setenv('GCS_AUTH_FILE' = '/Users/Phil/Documents/gcp-analytics-326219-c76fe0dc89d8.json')
 
-# get project credentials
-PROJECT_ID <- "gcp-analytics-326219"
-BUCKET_NAME <- "test-bucket"
-
-# authorize
-bq_auth(email = "phil.henrickson@aebs.com")
-
-# establish connection
-bigquerycon<-dbConnect(
-        bigrquery::bigquery(),
-        project = PROJECT_ID,
-        dataset = "bgg"
-)
-
-# query table of game info to most recent load
-active_games<-DBI::dbGetQuery(bigquerycon, 
-                              'SELECT * FROM bgg.api_game_info
-                              where timestamp = (SELECT MAX(timestamp) as most_recent FROM bgg.api_game_info)') %>%
-        select(-starts_with("rank")) %>%
-        mutate(numweights = as.numeric(numweights)) %>%
-        mutate_at(c("averageweight",
-                    "playingtime",
-                    "minplaytime",
-                    "maxplaytime",
-                    "yearpublished"),
-                  ~ case_when(. == 0 ~ NA_real_,
-                              TRUE ~ .))
-
-# ugh, made a mistake in the schema...
-
-# create caption for plots
-my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
-                                       paste("Data and analysis at github.com/phenrickson/bgg"), sep="\n")))
-
-
-# long table with game type variables
-game_types= DBI::dbGetQuery(bigquerycon, 
-                            'SELECT * FROM bgg.api_game_categories')
+# library(patchwork)
+# 
+# # connect to bigquery
+# library(bigrquery)
+# 
+# # get project credentials
+# PROJECT_ID <- "gcp-analytics-326219"
+# BUCKET_NAME <- "test-bucket"
+# 
+# # authorize
+# bq_auth(email = "phil.henrickson@aebs.com")
+# 
+# # establish connection
+# bigquerycon<-dbConnect(
+#         bigrquery::bigquery(),
+#         project = PROJECT_ID,
+#         dataset = "bgg"
+# )
+# 
+# # query table of game info to most recent load
+# active_games<-DBI::dbGetQuery(bigquerycon, 
+#                               'SELECT * FROM bgg.api_game_info
+#                               where timestamp = (SELECT MAX(timestamp) as most_recent FROM bgg.api_game_info)') %>%
+#         select(-starts_with("rank")) %>%
+#         mutate(numweights = as.numeric(numweights)) %>%
+#         mutate_at(c("averageweight",
+#                     "playingtime",
+#                     "minplaytime",
+#                     "maxplaytime",
+#                     "yearpublished"),
+#                   ~ case_when(. == 0 ~ NA_real_,
+#                               TRUE ~ .))
+# 
+# # ugh, made a mistake in the schema...
+# 
+# # create caption for plots
+# my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
+#                                        paste("Data and analysis at github.com/phenrickson/bgg"), sep="\n")))
+# 
+# 
+# # long table with game type variables
+# game_types= DBI::dbGetQuery(bigquerycon, 
+#                            'SELECT * FROM bgg.api_game_categories')
 
 # test 
 # get user collection
@@ -78,7 +81,7 @@ run_user_collection = function(input_user_list,
                                                             input_user_list),
                                                        input_year_end,
                                                        sep = "_"),
-                                               output_dir = here::here(""))
+                                               output_dir = here::here("user_reports"))
 }
 
 # load in users previously modeled
@@ -92,15 +95,15 @@ run_user_collection = function(input_user_list,
 #         unique()
 
 # or specify a list of users
-# user_files = c("Gyges",
-#                "ZeeGarcia",
-#                "Quinns",
-#                "rahdo",
-#                "Watch%20It%20Played",
-#                "mrbananagrabber",
-#                "GOBBluth89")
+user_files = c("Gyges",
+               "ZeeGarcia",
+               "Quinns",
+               "rahdo",
+               "Watch%20It%20Played",
+               "mrbananagrabber",
+               "GOBBluth89")
 
-user_files = c("comperio")
+#user_files = c("comperio")
 
 # # run over specified user list
 users = gsub("_", "%20", user_files)
@@ -135,7 +138,8 @@ foreach(i = 1:length(users_passed),
                                     input_year_end = 2020,
                                     input_ratings = 30)
                 
-                }
+        }
+
 
 rm(list=ls())
 gc()
