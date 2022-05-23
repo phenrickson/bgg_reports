@@ -4,6 +4,7 @@ library(foreach)
 source(here::here("scripts/load_packages.R"))
 source(here::here("functions/theme_phil.R"))
 
+# set gcs auth for imac
 Sys.setenv('GCS_AUTH_FILE' = '/Users/Phil/Documents/gcp-analytics-326219-c76fe0dc89d8.json')
 
 # library(patchwork)
@@ -94,20 +95,23 @@ run_user_collection = function(input_user_list,
 #         pull(username) %>%
 #         unique()
 
-# or specify a list of users
-user_files = c("Gyges",
+# # or specify a list of users
+users= c("Gyges",
                "ZeeGarcia",
                "Quinns",
                "rahdo",
                "Watch%20It%20Played",
                "mrbananagrabber",
-               "GOBBluth89")
+               "GOBBluth89",
+               "J_3MBG",
+               "VWValker",
+               "aboardgamebarrage",
+               "markbesada",
+               "Neilan",
+               "Alabaster%20Crippens")
 
-#user_files = c("comperio")
-
-# # run over specified user list
-users = gsub("_", "%20", user_files)
-
+users = c("Watch%20It%20Played")
+               
 # chgeck to see if collections are present first
 # run through list
 test_collections = foreach(i = 1:length(users),
@@ -116,7 +120,12 @@ test_collections = foreach(i = 1:length(users),
                 
                 get_user_collection(users[i])
                 
-        }
+                           }
+
+# count
+test_collections %>%
+        group_by(username) %>% 
+        count()
 
 # check to see who was in
 # set a 30 game minimum
@@ -141,6 +150,6 @@ foreach(i = 1:length(users_passed),
         }
 
 
-rm(list=ls())
-gc()
-.rs.restartR()
+# rm(list=ls())
+# gc()
+# .rs.restartR()

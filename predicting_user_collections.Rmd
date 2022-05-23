@@ -286,7 +286,6 @@ user_recipe = recipe(games_train) %>%
                            "wishing",
                            "timestamp",
                            "average",
-                           "averageweight",
                            "bayesaverage",
                            "usersrated",
                            "stddev"),
@@ -813,7 +812,7 @@ foo = owned_validation_last_fits %>%
                                  fit)) %>%
         pluck("fit", 1)
 
-if (nrow(foo$frame) > 40) {tree = rpart::prune(foo, cp=.002)} else {tree = foo}
+if (nrow(foo$frame) > 40) {tree = rpart::prune(foo, cp=.003)} else {tree = foo}
 
 
 # tidy up the text
@@ -877,7 +876,7 @@ owned_glmnet_train_fit %>%
         ylab("")+
         my_caption+
         ggtitle(paste("What predicts ", tidy_username, "'s collection?", sep=""),
-                subtitle = str_wrap(paste("Coefficients from a penalized logistic regression for games owned by specified user. Predictors centered and scaled. Model trained on games published prior to", params$end_training_year+1), 120))+
+                subtitle = str_wrap(paste("Coefficients from a penalized logistic regression for games owned by specified user. Predictors centered and scaled. Model trained on games published prior to", params$end_training_year), 120))+
         scale_color_gradient2(low = "red",
                               mid = "grey60",
                               high = "deepskyblue2",
@@ -1923,19 +1922,19 @@ gcs_save(user_owned_workflow,
 
 ```
 
-```{r save locally}
+```{r save locally, eval=T}
 
 suppressWarnings({
 suppressMessages({
-readr::write_rds(user_owned_workflow,
-     file = here::here("user_workflows",  paste(tidy_username, "owned_workflow.Rds", sep="_")))
+saveRDS(user_owned_workflow,
+     file = here::here("user_workflows",  paste("bgg_user_owned", tidy_username, "workflow.Rds", sep="_")))
 })
 })
 
 ```
 
 
-```{r rm objects from memory}
+```{r rm objects from memory, results = 'hide', include = F}
 
 rm(user_owned_workflow,
    owned_upcoming_probs,
