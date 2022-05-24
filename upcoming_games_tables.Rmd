@@ -183,7 +183,7 @@ games_template = bgg_outcomes_recipe$template
 ```
 
 
-```{r now get pieces we need for prediction, warning=F, message=F}
+```{r now get pieces we need for prediction, warning=F, message=F, include=F}
 
 # game_info with estimated averageweight
 upcoming_estimated_averageweight = bgg_outcomes_final_workflows %>%

@@ -23,10 +23,11 @@ bigquerycon<-dbConnect(
         dataset = "bgg"
 )
 
+
 # get bgg ids from most recent load
 all_game_ids<-DBI::dbGetQuery(bigquerycon, 
-                              'SELECT * FROM bgg.api_all_game_ids
-                              where date = (SELECT MAX(date) as most_recent FROM bgg.api_all_game_ids)')
+                              'SELECT game_id, type, MAX(date) as most_recent_by_game FROM bgg.api_all_game_ids
+                              GROUP BY game_id, type')
 
 # pull ids
 bgg_ids = all_game_ids %>%
@@ -60,7 +61,17 @@ batches_returned = foreach(b = 1:length(batches),
         
         }
 
+# indicate initial batch is complete
 beepr::beep(1)
+
+# find games not returned
+check_ids = map(batches_returned, "game_features") %>%
+        rbindlist(.)
+
+# any games in this?
+all_game_ids$game_id[!(all_game_ids$game_id %in% check_ids$game_id)]
+        
+
 
 # check the lengths of each batch
 check = data.frame(length = lengths(batches_returned),
