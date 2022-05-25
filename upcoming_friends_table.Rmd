@@ -1,5 +1,5 @@
 ---
-title: "Predicting Upcoming Games for Reviewers"
+title: "Predicting Upcoming Games for Jim and Phil"
 output:
   html_document:
     toc: yes
@@ -142,18 +142,21 @@ Sys.setenv('GCS_AUTH_FILE' = '/Users/Phil/Documents/gcp-analytics-326219-c76fe0d
 # should auto authenticate
 library(googleCloudStorageR)
 
-# list of reviewers
-reviewers = c("Gyges",
-               "ZeeGarcia",
-               "Quinns",
-               "rahdo",
-               "Watch%20It%20Played",
-               "J_3MBG",
-               "VWValker",
-               "aboardgamebarrage",
-          #     "markbesada",
-           #    "Neilan",
-               "Alabaster%20Crippens")
+# # list of reviewers
+# reviewers = c("Gyges",
+#                "ZeeGarcia",
+#                "Quinns",
+#                "rahdo",
+#                "Watch%20It%20Played",
+#                "J_3MBG",
+#                "VWValker",
+#                "aboardgamebarrage",
+#           #     "markbesada",
+#            #    "Neilan",
+#                "Alabaster%20Crippens")
+
+reviewers = c("mrbananagrabber",
+              "GOBBluth89")
 
 # tidy
 reviewers_tidied = gsub("%20", "", reviewers)
@@ -205,10 +208,12 @@ nrow(user_collections_tidied %>%
 
 ```
 
-```{r load user workflows}
+```{r load user workflows, include=F}
 
 user_owned_workflows = here::here("user_workflows", user_owned_files) %>%
-        map_dfr(readRDS)
+        map_dfr(readRDS) %>%
+        mutate(username = case_when(username == 'Phil' ~ 'mrbananagrabber',
+                                    TRUE ~ username))
 
 # # get saved files
 # reviewer_files = list.files(here::here("user_workflows")) %>%
@@ -336,17 +341,15 @@ games_and_collections_data =
 
 # What is this? {-}
 
-This notebook contains a set of analyses for predicting upcoming board games for prominent reviewers and users in the world of boardgaming. 
+This notebook contains a set of analyses for predicting upcoming board games for myself and my brother.
 
 Using data on games and user collections from boardgamegeek, I trained models at the individual user level to predict how likely a user is to add an upcoming game to their collection. This analysis is not focused on predicting how a reviewer will *rate* a game, but simply whether they will add it to their collection.
-
-To see an example of training a user specific model, click on the following link: https://phenrickson.github.io/bgg_reports/user_reports/mrbananagrabber_2020.html. This notebook illustrates the process of training a model to predict my own collection.
 
 Last Updated: `r Sys.Date()`
 
 # The Data
 
-I currently am running this analysis for reviewers from Shut Up and Sit Down (Quinns and Ava), Zee Garcia (The Dice Tower) Rahdo, So Very Wrong About Games (Mark Bigney and Mike Walker), Just Three Minute Board Games, WatchItPlayed Board Game Barrage (right now, only Christina). I also analyze Rodney Smith from WatchItPlayed, who doesn't so much as review games as make incredibly helpful tutorials, but I still refer to the entire group as 'reviewers' from here on out. 
+Showing number of games owned by each user.
 
 ```{r summarize collections by reviewer}
 
@@ -384,7 +387,7 @@ summarized = games_and_collections_data %>%
         mutate(max = max(value)) 
 ```
 
-There are a number of different outcomes on boardgamegeek for every reviewer's collection. The outcome I am interested in modeling is 'Ever Owned' - has a user ever added game to their collection?
+There are a number of different outcomes on boardgamegeek for any user's collection. The outcome I am interested in modeling is 'Ever Owned' - has a user ever added game to their collection?
 
 ```{r table of game outcomes by reviewer}
 
@@ -399,7 +402,7 @@ summarized %>%
 
 ```
 
-Some reviewers have owned more games than others, which will make their baseline probability of owning an upcoming game higher than others.
+I've owned more games than Jim has, so my baseline probability is going to be higher in evaluating new games.
 
 ```{r table of games outcome by reviwer plot}
 
@@ -428,37 +431,13 @@ summarized %>%
 
 ```
 
-I model each user's collection as a function of selected game features, using information about the game on BGG such as mechanics, player count, playing time, category, as well as features for prominent designers, publishers, and artists. The model does not look at outcomes on BGG, such as the number of user ratings or community rating, though I do include the BGG complexity rating (averageweight) as a feature. For predicting upcoming games for reviewers, I first estimate their complexity using a separate model, then use the model's estimated complexity in the reviewer models. The table below shows the set of features being examined by the model.
-
-```{r show features, warning=F, message=F}
-
-user_owned_workflows[4,] %>%
-        mutate(fit = map(.workflow, 
-                     ~ .x %>% extract_fit_parsnip)) %>%
-        pluck("fit", 1) %$%
-        fit %$% 
-        beta %>% 
-        rownames() %>%
-        as_tibble() %>%
-        mutate(feature = value,
-               type = case_when(grepl("artist_", feature) ~ "artist",
-                                grepl("averageweight", feature) ~ "bgg outcome",
-                                grepl("publisher_", feature) ~ "publisher",
-                                grepl("designer_", feature) ~ "designer",
-                                grepl("family|category", feature) ~ "bgg category",
-                                grepl("mechanic", feature) ~ "mechanic",
-                                TRUE ~ "info")) %>%
-        mutate(tidied_feature = tidy_name_func(feature)) %>%
-        select(feature, tidied_feature, type) %>%
-        DT::datatable()
-
-```
+I model each user's collection as a function of selected game features, using information about the game on BGG such as mechanics, player count, playing time, category, as well as features for prominent designers, publishers, and artists. The model does not look at outcomes on BGG, such as the number of user ratings or community rating, though I do include the BGG complexity rating (averageweight) as a feature. For predicting upcoming games for reviewers, I first estimate their complexity using a separate model, then use the model's estimated complexity in the reviewer models. 
 
 # Models
 
-I trained classification models (specifically, penalized logistic regression models) for each individual reviewer using games published before 2021. The outcome is binary, indicating yes when an individual reviewer owned a game and no when they have not.
+I trained classification models (specifically, penalized logistic regression models) for each of our collections using games published before 2021. The outcome is binary, indicating yes when an individual owned a game and no when they have not.
 
-For each reviewer, the model looks at features of games (mechanics, playing time, category) and how they relate to a user's decision to own a game. If a user has owned a lot of Science Fiction Games, the model will likely find a positive effect for Science Fiction.
+The model looks at features of games (mechanics, playing time, category) and how they relate to a user's decision to own a game. If a user has owned a lot of Science Fiction Games, the model will likely find a positive effect for Science Fiction.
 
 ```{r get user models, warning=F, include=F}
 
@@ -470,62 +449,13 @@ user_models = user_owned_workflows %>%
 
 ```
 
-## An Example
-
-To illustrate, here are the top 20 coefficients from **rahdo's** model (after centering and scaling the features to be on the same scale). Features with positive coefficients increase the probability that rahdo will own a game; features with negative coefficients decrease the probability. 
-
-```{r show rahdos model as an example}
-
-user_models %>%
-        filter(username == 'rahdo') %>%
-        select(username, outcome, tidied) %>%
-        unnest(tidied) %>%
-        filter(term != '(Intercept)') %>%
-        group_by(username, outcome) %>%
-        mutate(term = tidy_name_func(term)) %>%
-        slice_max(order_by = abs(estimate),
-                  n=20) %>%
-        ggplot(., aes(x=estimate,
-                      color = estimate,
-                      y = reorder_within(term, estimate, username)))+
-        facet_wrap(username ~.,
-                   ncol = 3, 
-                   scales = "free_y")+
-        geom_point()+
-        theme_phil()+
-        theme(legend.title = element_text(size=8))+
-        geom_vline(xintercept =0,
-                   linetype = 'dotted')+
-        scale_y_reordered()+
-        ylab("feature")+
-        xlab("effect on owning game (log-odds)")+
-        scale_color_gradient2(low = "red",
-                              mid = "grey60",
-                              high = "deepskyblue2",
-                              limits = c(-0.1, 0.1),
-                              oob = scales::squish)+
-        guides(color = guide_colorbar(barwidth = 15,
-                                      barheight = 0.5,
-                                      title = "Decreases Probability                               Increases Probability",
-                                      title.position = 'top',
-                                      label = F))+
-        theme(strip.text.x = element_text(size = 14))
-
-```
-
-This means that Rahdo is more likely to own a game if it's been published recently (an increase in the year the game was published), if it has more mechanics and a higher minimum age, and if it has set collection or has been published by Rio Grande. 
-
-Conversely, Rahdo is less likely to own wargames, games with a higher minimum player count, childrens games, or games with take that mechanics.
-
-If you've watched a lot of rahdo, as a I have, this probably makes sense. He is always running through new games and frequently adds ones he likes to his collection, and he tends to like somewhat complex economic/worker placement games. He dislikes wargames and take that mechanics, and since he mostly plays games at two players he's less likely to own a game if it has a higher minimum player count.
-
 ## Individual Reviewer Models
 
 A 'model' for an individual user is an equation that relates how features of a game affect the probability that a user will own it. The values, or coefficients, in that equation are learned by looking at the user's historical data. 
 
-The following plot displays the top 25 coefficients from each reviewer's model.
+The following plot displays the top 30 coefficients for each model.
 
-```{r check on models, warning=F, message=F, fig.height=12, fig.width=10}
+```{r check on models, warning=F, message=F, fig.height=8, fig.width=10}
 
 user_models %>%
         select(username, outcome, tidied) %>%
@@ -534,7 +464,8 @@ user_models %>%
         group_by(username, outcome) %>%
         mutate(term = tidy_name_func(term)) %>%
         slice_max(order_by = abs(estimate),
-                  n=25) %>%
+                  with_ties = F,
+                  n=30) %>%
         ggplot(., aes(x=estimate,
                       color = estimate,
                       y = reorder_within(term, estimate, username)))+
@@ -566,7 +497,7 @@ user_models %>%
 
 ```
 
-To put it more simply, here are the top 5 positive/negative features for each reviewer, which we can think of as their likes/dislikes.
+To put it more simply, here are the top 5 positive/negative features for each user, which we can think of as their main likes/dislikes.
 
 ```{r get likes and dislikes for each reviewer, warning=F}
 
@@ -577,6 +508,7 @@ user_models %>%
         group_by(username, outcome) %>%
         mutate(term = tidy_name_func(term)) %>%
         slice_max(order_by = estimate,
+                  with_ties = F,
                   n=5) %>%
         mutate(type = 'likes') %>%
         bind_rows(.,
@@ -584,10 +516,11 @@ user_models %>%
                           select(username, outcome, tidied) %>%
                           unnest(tidied) %>%
                           filter(term != '(Intercept)') %>%
-                          filter(username != 'mrbananagrabber' & username != 'Phil') %>%
                           group_by(username, outcome) %>%
                           mutate(term = tidy_name_func(term)) %>%
+                          filter(estimate < 0) %>%
                           slice_min(order_by = estimate,
+                                    with_ties = F,
                                     n=5) %>%
                           mutate(type = 'dislikes')
                   ) %>%
@@ -616,9 +549,9 @@ user_models %>%
 
 # Predicting Upcoming Games
 
-I trained each reviewer's model on games published before 2021. I now use these models to predict games published from 2021 and onwards for each reviewer.
+I trained each user's model on games published before 2021. I now use these models to predict games published from 2021.
 
-A couple of notes here. Since I'm using the averageweight of the game on BGG as a feature, which is itself an outcome voted on by BGG users that we won't necessarily know for newly released games, I first use a separate model to estimate the complexity of upcoming games. I then use the estimated averageweight in my models.
+A couple of notes here. Since I'm using the averageweight of the game on BGG as a feature, which is itself an outcome voted on by BGG users that we won't necessarily know for newly released games, I first use a separate model to estimate the complexity of upcoming games. I then use the estimated averageweight in user models.
 
 I additionally flag some games as having potentially incorrect or misleading data. If a game has more than 15 mechanics while having a low complexity, it's likely the data is incorrect.
 
@@ -740,11 +673,6 @@ What upcoming games are most likely to be owned by these reviewers? I simply tak
 
 prob_table = games_upcoming_probs %>%
         select(yearpublished, game_id, name, .pred_yes, username) %>%
-        left_join(., reviewers_df %>%
-                          mutate(username = username_tidied),
-                  by = c("username")) %>%
-        select(-username, -username_tidied) %>%
-        rename(username = username_abbr) %>%
         filter(!(game_id %in% upcoming_flags$game_id)) %>%
                 group_by(username) %>%
                 arrange(desc(.pred_yes)) %>%
@@ -752,11 +680,11 @@ prob_table = games_upcoming_probs %>%
       #          select(-.pred_yes) %>%
      #   spread(username, rank) %>%
                 spread(username, .pred_yes) %>%
-        mutate(Mean = rowMeans(select(., all_of(reviewers_df$username_abbr)))) %>%
+        mutate(Mean = rowMeans(select(., all_of(reviewers_df$username)))) %>%
                # mutate(Mean = round(Mean, 2)) %>%
         select(yearpublished, game_id, name, Mean, everything()) %>%
                 mutate_if(is.numeric, round, 2) %>%
-                mutate_at(vars(reviewers_df$username_abbr),
+                mutate_at(vars(reviewers_df$username),
                 ~ case_when(. == 1 ~ .99,
                             . == 0 ~ .01,
                             TRUE ~ .)) %>%
@@ -785,7 +713,8 @@ col_palette <- colorRamp(length(breaks)+1)
 # make data table
 prob_table %>%
         mutate(Name = paste('<a href="https://boardgamegeek.com/boardgame/', ID, '">', Name, '</a>', sep="")) %>%
-        select(-ID) %>%
+        select(Published, ID, Name, Mean, mrbananagrabber, GOBBluth89) %>%
+    #    select(-ID) %>%
         datatable(escape=F,
                   filter = 'top',
                   options = list(pageLength = 50),
@@ -794,19 +723,12 @@ prob_table %>%
 
 ```
 
-<!-- The following table displays top 100 games in a table - click on the ID or Name to go straight to the boardgamegeek profile for a given game. -->
-
 ```{r make flextable func}
 
 make_reviewer_flextable_func = function(input_data, n=50) {
         
         input_data %>%
           select(yearpublished, game_id, name, .pred_yes, username) %>%
-        left_join(., reviewers_df %>%
-                          mutate(username = username_tidied),
-                  by = c("username")) %>%
-        select(-username, -username_tidied) %>%
-        rename(username = username_abbr) %>%
         filter(!(game_id %in% upcoming_flags$game_id)) %>%
                 group_by(username) %>%
                 arrange(desc(.pred_yes)) %>%
@@ -814,11 +736,11 @@ make_reviewer_flextable_func = function(input_data, n=50) {
       #          select(-.pred_yes) %>%
      #   spread(username, rank) %>%
                 spread(username, .pred_yes) %>%
-        mutate(Mean = rowMeans(select(., all_of(reviewers_df$username_abbr)))) %>%
+        mutate(Mean = rowMeans(select(., all_of(reviewers_df$username)))) %>%
                # mutate(Mean = round(Mean, 2)) %>%
         select(yearpublished, game_id, name, Mean, everything()) %>%
                 mutate_if(is.numeric, round, 2) %>%
-                mutate_at(vars(reviewers_df$username_abbr),
+                mutate_at(vars(reviewers_df$username),
                 ~ case_when(. == 1 ~ .99,
                             . == 0 ~ .01,
                             TRUE ~ .)) %>%
@@ -834,7 +756,7 @@ make_reviewer_flextable_func = function(input_data, n=50) {
         mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
         mutate(Rank = row_number()) %>%
         head(50) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "Mean", reviewers_df$username_abbr)) %>%
+        flextable(col_keys = c("Rank", "Published", "ID", "Name", "Mean", reviewers_df$username)) %>%
         compose(j= 3,
                 value = as_paragraph(
                         hyperlink_text(x = ID,
@@ -848,7 +770,7 @@ make_reviewer_flextable_func = function(input_data, n=50) {
         bg(.,
            bg = col_func,
            j = c("Mean",
-                 reviewers_df$username_abbr)) %>%
+                 reviewers_df$username)) %>%
         bg(., 
            bg = 'grey90',
            i = ~  ID %in% as.character(upcoming_flags$game_id)
@@ -869,7 +791,7 @@ make_reviewer_flextable_func = function(input_data, n=50) {
         flextable::align(part = c("all"),
                          align = 'center',
                          j = c("Mean",
-                               reviewers_df$username_abbr)) %>%
+                               reviewers_df$username)) %>%
         autofit()
         
                              }
@@ -883,30 +805,48 @@ make_reviewer_flextable_func = function(input_data, n=50) {
 
 <!-- ``` -->
 
-## Comparing Reviewer Predictions
+## Comparing Predictions
 
-How do reviewer predictions compare? I'll look at the correlation (Spearman) between the probabilities for each reviewer.
+How do reviewer predictions compare? I'll look at the correlation (Spearman) between the probabilities for each user
 
 ```{r compare correlation}
+
+# games_upcoming_probs %>%
+#         select(yearpublished, game_id, name, .pred_yes, username) %>%
+#         filter(!(game_id %in% upcoming_flags$game_id)) %>%
+#         spread(username, .pred_yes) %>%
+#          select(all_of(reviewers_tidied)) %>%
+# #         cor(method = 'spearman') %>%
+#         ggcorrplot(hc.order = TRUE, 
+#                    lab = T,
+#                  #  type = 'lower',
+#                    outline.color = "white")+
+#         theme(axis.text.x= element_text(size = 8,
+#                                        angle = 45))+
+#         theme(axis.text.y = element_text(size = 8))
 
 games_upcoming_probs %>%
         select(yearpublished, game_id, name, .pred_yes, username) %>%
         filter(!(game_id %in% upcoming_flags$game_id)) %>%
         spread(username, .pred_yes) %>%
-        select(all_of(reviewers_tidied)) %>%
-        cor(method = 'spearman') %>%
-        ggcorrplot(hc.order = TRUE, 
-                   lab = T,
-                 #  type = 'lower',
-                   outline.color = "white")+
-        theme(axis.text.x= element_text(size = 8,
-                                       angle = 45))+
-        theme(axis.text.y = element_text(size = 8))
+         select(name, all_of(reviewers_tidied)) %>%
+        ggplot(., aes(x=mrbananagrabber,
+                      label = name,
+                      y=GOBBluth89))+
+        geom_jitter(alpha = 0.25)+
+        geom_text(check_overlap=T,
+                  vjust = -1,
+                  size = 2.5)+
+        theme_phil()+
+        stat_cor(p.accuracy = 0.01,
+                 method = 'spearman',
+                 color = 'blue')+
+        geom_smooth(method = 'lm',
+                    formula = 'y ~ x',
+                    alpha = 0.5,
+                    col = 'blue')
 
 ```
-
-Ava (AlabasterCrippens) is most correlated with Quinns and aboardgamebarrage, while Mark Bigney (Gyges) is most correlated with Just Three Minute Board Games (J_3MBG) and Walker (VWValker). The least correlated reviewers are Zee and Mark Bigney, who evidently have very different preferences for games: for instance, Mark rates Tigris & Euphrates at 9.5 (his highest rating) while Zee rates it a 4.
-
 
 <!-- ```{r show walker and mark bigneys probabilities, fig.height=8} -->
 
@@ -964,9 +904,9 @@ make_reviewer_flextable_func(games_upcoming_probs %>%
 
 ```
 
-# Top Games by Reviewer
+# Top Games by User
 
-In this section I look at the top games for individual reviewers by year. I rank each reviewer's top games according to their model, then highlight in blue games that the reviewer has already added to their collection.
+In this section I look at the top games for individuals by year. I rank each user's top games according to their model, then highlight in blue games that the reviewer has already added to their collection.
 
 ```{r try to make flextable differently, warning=F, message=F}
 
@@ -1011,51 +951,19 @@ get_fts =
                         bg(., 
                            bg = flag_games_func,
                            j = user_names) %>%
-                           bg(., j = 'Gyges',
-                           i = ~ Gyges %in% (games_owned %>%
-                                                     filter(username == 'Gyges') %>%
+                           bg(., j = 'mrbananagrabber',
+                           i = ~ mrbananagrabber %in% (games_owned %>%
+                                                     filter(username == 'mrbananagrabber') %>%
                                                      pull(name)),
                            bg = 'deepskyblue1') %>%
-                        bg(., j = 'ZeeGarcia',
-                           i = ~ ZeeGarcia %in% (games_owned %>%
-                                                     filter(username == 'ZeeGarcia') %>%
-                                                     pull(name)),
-                           bg = 'deepskyblue1') %>%
-                        bg(., j = 'Quinns',
-                           i = ~ Quinns %in% (games_owned %>%
-                                                     filter(username == 'Quinns') %>%
-                                                     pull(name)),
-                           bg = 'deepskyblue1') %>%
-                        bg(., j = 'rahdo',
-                           i = ~ rahdo %in% (games_owned %>%
-                                                     filter(username == 'rahdo') %>%
-                                                     pull(name)),
-                           bg = 'deepskyblue1') %>%
-                        bg(., j = 'WatchItPlayed',
-                           i = ~ WatchItPlayed %in% (games_owned %>%
-                                                     filter(username == 'WatchItPlayed') %>%
-                                                     pull(name)),
-                           bg = 'deepskyblue1') %>%
-                        bg(., j = 'J_3MBG',
-                           i = ~ J_3MBG %in% (games_owned %>%
-                                                     filter(username == 'J_3MBG') %>%
-                                                     pull(name)),
-                           bg = 'deepskyblue1') %>%
-                        bg(., j = 'VWValker',
-                           i = ~ VWValker %in% (games_owned %>%
-                                                     filter(username == 'VWValker') %>%
-                                                     pull(name)),
-                           bg = 'deepskyblue1') %>%
-                        bg(., j = 'AlabasterCrippens',
-                           i = ~ AlabasterCrippens %in% (games_owned %>%
-                                                     filter(username == 'AlabasterCrippens') %>%
+                        bg(., j = 'GOBBluth89',
+                           i = ~ GOBBluth89 %in% (games_owned %>%
+                                                     filter(username == 'GOBBluth89') %>%
                                                      pull(name)),
                            bg = 'deepskyblue1') %>%
                         flextable::align(part = c("header"),
                                          align = 'center',
-                                         j =  reviewers_df$username_tidied) %>%
-                        flextable::set_header_labels(., values =
-                                                             split(reviewers_df$username_abbr, reviewers_df$username_tidied)) %>%
+                                         j =  reviewers_df$username) %>%
                         flextable::color(color = 'grey20', part='all') %>%
                         autofit()
         
@@ -1096,7 +1004,7 @@ pluck(get_fts, 3)
 readr::write_rds(games_upcoming_probs %>%
                          mutate(date = Sys.Date()) %>%
                          select(date, everything()),
-                 file = here::here("predictions", paste("reviewer_probs_", Sys.Date(), ".Rdata", sep="")))
+                 file = here::here("predictions", paste("user_probs_", Sys.Date(), ".Rdata", sep="")))
 
 ```
 
