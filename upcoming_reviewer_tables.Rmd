@@ -736,7 +736,7 @@ reviewers_df = data.frame("username" = reviewers,
 
 What upcoming games are most likely to be owned by these reviewers? I simply take the mean of reviewer probabilities for each game and sort, looking at games that have the highest probability across all reviewers. The following table shows probabilities for every reviewer and can be filtered and sorted for any reviewer. For any game, click on its name to go straight to its profile on BGG.
 
-```{r data table for reviewer probs}
+```{r make datatable for reviewer probs}
 
 prob_table = games_upcoming_probs %>%
         select(yearpublished, game_id, name, .pred_yes, username) %>%
@@ -745,7 +745,7 @@ prob_table = games_upcoming_probs %>%
                   by = c("username")) %>%
         select(-username, -username_tidied) %>%
         rename(username = username_abbr) %>%
-        filter(!(game_id %in% upcoming_flags$game_id)) %>%
+     #   filter(!(game_id %in% upcoming_flags$game_id)) %>%
                 group_by(username) %>%
                 arrange(desc(.pred_yes)) %>%
            #     mutate(rank = row_number()) %>%
@@ -769,29 +769,31 @@ prob_table = games_upcoming_probs %>%
         mutate(yearpublished = factor(yearpublished)) %>%
         rename(Published = yearpublished,
                ID = game_id,
-               Name = name)
+               Name = name) %>%
+        mutate(Name = paste('<a href="https://boardgamegeek.com/boardgame/', ID, '">', Name, '</a>', sep="")) %>%
+        select(-ID)
 
 
-# create 19 breaks and 20 rgb color values ranging from white to red
-# breaks <- quantile(prob_table %>%
-#                          select(Mean, one_of(reviewers_df$username_abbr)), probs = seq(.01, .99, .04), na.rm = TRUE)
-
+# make breaks
 breaks<-quantile(seq(.01, .99, .01), probs = seq(.01, .99, .05))
 
 #  breaks = weight_deciles
 colorRamp=colorRampPalette(c("white", "deepskyblue1"))
 col_palette <- colorRamp(length(breaks)+1)
 
-# make data table
+# display table
 prob_table %>%
-        mutate(Name = paste('<a href="https://boardgamegeek.com/boardgame/', ID, '">', Name, '</a>', sep="")) %>%
-        select(-ID) %>%
         datatable(escape=F,
                   filter = 'top',
-                  options = list(pageLength = 50),
+                  options = list(pageLength = 25,
+                                 scrollX=F,
+                                 autowidth=T,
+                                 columnDefs = list(list(className = 'dt-center', targets = which(names(prob_table)!='Name')-1))),
+                             #    columnDefs=list(list(width = '30px', targets = c(which(names(prob_table)!='Name')-1)))),
+                                                # list(width = '400px', targets = c(which(names(prob_table)=='Name')-1)))),
+                                       #  targets = seq(3, ncol(prob_table)-1))),
                   rownames = F) %>%
-        formatStyle(names(prob_table %>% select(-Published, -ID, -Name)), backgroundColor = styleInterval(breaks, col_palette))
-
+        formatStyle(names(prob_table %>% select(-Published, -Name)), backgroundColor = styleInterval(breaks, col_palette))
 ```
 
 <!-- The following table displays top 100 games in a table - click on the ID or Name to go straight to the boardgamegeek profile for a given game. -->

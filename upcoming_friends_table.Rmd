@@ -7,8 +7,9 @@ output:
     toc_float: yes
     keep_md: no
     fig.caption: yes
-  pdf_document:
-    toc: yes
+    css: styles.css 
+  # pdf_document:
+  #   toc: yes
 ---
 
 ```{r load and set packages, echo=F, warning=F, message=F,  results = 'hide', include=F}
