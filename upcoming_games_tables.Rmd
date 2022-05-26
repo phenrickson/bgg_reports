@@ -218,6 +218,7 @@ preds_upcoming_tidied = preds_upcoming %>%
         unnest() %>%
         mutate(wflow_id = gsub("full_", "", gsub("all_", "", gsub("normalize_", "", wflow_id)))) %>%
         mutate(.pred = case_when(outcome == 'usersrated' ~ plyr::round_any(exp(.pred), 100, ceiling),
+                                 outcome == 'averageweight' & .pred < 1 ~ 1,
                                  TRUE ~ .pred)) %>%
         pivot_wider(names_from = c("outcome", "wflow_id"),
                     values_from = ".pred") %>%
@@ -238,7 +239,7 @@ readr::write_rds(preds_upcoming_tidied,
 
 ```
 
-# Background
+# What is this? {-}
 
 What upcoming games on boardgamegeek are expected to be popular? 
 
@@ -246,6 +247,8 @@ I trained a variety of models on historical data from BGG in order to make predi
 
 For more details on my methodology, see my write up at:
 https://phenrickson.github.io/bgg_reports/predicting_bgg_outcomes.html
+
+Last Updated: **`r Sys.Date()`**
 
 ```{r make a function for flextables}
 
@@ -363,10 +366,151 @@ make_heat_table_func = function(input_preds_table,
 ```
 
 
+```{r tidy up predictions}
+
+preds_table = preds_upcoming_tidied %>%
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+           #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+            #    filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")) %>%
+        arrange(desc(bayesaverage_xgbTree)) %>%
+        rename(ID = game_id,
+               Name = name,
+               Published = yearpublished,
+               UserRatings = usersrated_xgbTree,
+               Weight = averageweight_xgbTree,
+               Average = average_xgbTree,
+               GeekRating = bayesaverage_indirect_xgbTree) %>%
+        arrange(desc(GeekRating)) %>%
+#        arrange(desc(!!enquo(sort_by))) %>%
+        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
+   #     arrange(desc(GeekRating)) %>%
+        mutate(Rank = row_number()) %>%
+        mutate_if(is.numeric, round, 2) %>%
+        select(Rank, everything()) %>%
+        select(Rank, Published, ID, Name, Weight, UserRatings, Average, GeekRating) %>%
+        mutate(Name = paste('<a href="https://boardgamegeek.com/boardgame/', ID, '">', Name, '</a>', sep="")) %>%
+        select(-ID)
+
+```
+
+
+```{r define breaks for data tables}
+
+breaks_df = data.frame(outcome = 'GeekRating',
+                       breaks = quantile(active_games %>% 
+                                                 filter(bayesaverage != 0) %>%
+                                                 pull(bayesaverage), 
+                                         probs = seq(.5, 1, .01), na.rm=T) %>%
+                               as.vector) %>%
+        bind_rows(.,
+                  data.frame(outcome = 'Average',
+                             breaks = quantile(active_games %>% 
+                                                 filter(average != 0) %>%
+                                                 pull(average), 
+                                         probs = seq(.75, .97, .01), na.rm=T) %>%
+                                     as.vector)) %>%
+        bind_rows(.,
+                  data.frame(outcome = 'UserRatings',
+                             breaks = c(0,
+                                                   100,
+                                                   200,
+                                                   500,
+                                                   1000,
+                                                   1500,
+                                                   2000,
+                                                   3000,
+                                                   5000,
+                                                   7500,
+                                                   10000,
+                                                   25000,
+                                                   50000))) %>%
+        bind_rows(.,
+                   data.frame(outcome = 'Weight',
+                              breaks = quantile(active_games %>%
+                                                        filter(usersrated != 0) %>%
+                                                        pull(averageweight) , probs = seq(0, 1, .01), na.rm=T) %>%
+                                      as.vector))
+                  
+                  
+
+# make breaks
+#breaks<-quantile(seq(.01, .99, .01), probs = seq(.01, .99, .05))
+
+#  breaks = weight_deciles
+blueColorRamp = colorRampPalette(c("white", "deepskyblue1"))
+blueRedColorRamp = colorRampPalette(c("deepskyblue1", "white", "red"))
+
+```
+
+# Predicting Upcoming Games
+
+This table displays the model's **estimates** for four different outcomes for all upcoming games: Weight (complexity), UserRatings, Average, and GeekRating. The table below shows the top 25 games with the highest expected geek rating, but can be sorted and filtered based on outcome or year.
+
+The model's estimates are based only on information in a game's profile (categories, mechanics, playingtime, publisher, designer), and do not use information on how the games are currently rated on BGG. 
+
+Click on the link in a game's name to go directly to that game's boardgamegeek page.
+
+```{r data table outcomes}
+
+# blue_palette <- colorRamp(length(breaks)+1)
+# blue_red_palette <- colorRamp2(length(breaks)+1)
+
+# display table
+preds_table %>%
+        mutate(Published = factor(Published)) %>%
+        datatable(escape=F,
+                  filter = 'top',
+                  options = list(pageLength = 25,
+                                 scrollX=F,
+                                 autowidth=T,
+                                 columnDefs = list(list(className = 'dt-center', targets = which(names(preds_table)!='Name')-1))),
+                             #    columnDefs=list(list(width = '30px', targets = c(which(names(prob_table)!='Name')-1)))),
+                                                # list(width = '400px', targets = c(which(names(prob_table)=='Name')-1)))),
+                                       #  targets = seq(3, ncol(prob_table)-1))),
+                  rownames = F) %>%
+        formatStyle("GeekRating", backgroundColor = styleInterval(breaks_df %>%
+                                                                          filter(outcome == 'GeekRating') %>%
+                                                                          pull(breaks),
+                                                                  blueColorRamp(breaks_df %>%
+                                                                          filter(outcome == 'GeekRating') %>%
+                                                                          pull(breaks) %>%
+                                                                                  length()+1))) %>%
+        formatStyle("Average", backgroundColor = styleInterval(breaks_df %>%
+                                                                          filter(outcome == 'Average') %>%
+                                                                          pull(breaks),
+                                                                  blueColorRamp(breaks_df %>%
+                                                                          filter(outcome == 'Average') %>%
+                                                                          pull(breaks) %>%
+                                                                                  length()+1))) %>%
+        formatStyle("Weight", backgroundColor = styleInterval(breaks_df %>%
+                                                                          filter(outcome == 'Weight') %>%
+                                                                          pull(breaks),
+                                                                  blueRedColorRamp(breaks_df %>%
+                                                                          filter(outcome == 'Weight') %>%
+                                                                          pull(breaks) %>%
+                                                                                  length()+1))) %>%
+        formatStyle("UserRatings", backgroundColor = styleInterval(breaks_df %>%
+                                                                          filter(outcome == 'UserRatings') %>%
+                                                                          pull(breaks),
+                                                                  blueColorRamp(breaks_df %>%
+                                                                          filter(outcome == 'UserRatings') %>%
+                                                                          pull(breaks) %>%
+                                                                                  length()+1))) 
+
+```
+
+
 # Top 100s
 
-In this section, I display the model's top 100 games for the geek rating, average rating, and number of users rated. In each of the tables below, click on the name of the game in order to go directly to the game's boardgamegeek profile.
-<!-- or click on any of the estimated values to go to a report showing how the model arrived at its predictions, along with some other analyses. -->
+The table above allowed for a user to filter and sort all of the predictions. This section shows snapshots of the top 100 games by individual outcomes. As before, click on the link of a game to go to its boardgamegeek page.
 
 ## Highest Expected Geek Rating
 
@@ -811,110 +955,110 @@ make_heat_table_func(
 ```
 
 
-# Interactive Tables
+<!-- # Interactive Tables -->
 
-What is the model estimating for upcoming games? The following tables allow users to search for games and examine how the model's predictions compare to the most recent pull of data from BGG.
+<!-- What is the model estimating for upcoming games? The following tables allow users to search for games and examine how the model's predictions compare to the most recent pull of data from BGG. -->
 
-## User Ratings
+<!-- ## User Ratings -->
 
-```{r interactive table for predictions}
+<!-- ```{r interactive table for predictions} -->
 
-preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-        filter(grepl("usersrated", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage,
-                                 usersrated),
-                  by = c("game_id", "name")) %>%
-    #@    filter(bayesaverage > 0) %>%
-   #     rename(pred_xgbTree = usersrated_xgbTree) %>%
-        rename(pred_stan = usersrated_stan,
-               pred_xgbTree = usersrated_xgbTree) %>%
-        arrange(desc(pred_xgbTree)) %>%
- #       mutate(estimated = pred_xgbTree) %>%
-       # select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>%
-        rename(ID = game_id,
-               Published = yearpublished,
-               Name = name,
-               UsersRated = usersrated,
-               Predicted = pred_xgbTree) %>%
-        select(ID, Published, Name, UsersRated, Predicted) %>%
-  #      select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>%
-        DT::datatable()
+<!-- preds_upcoming_tidied %>% -->
+<!--         gather("wflow", "pred", -->
+<!--                -game_id, -name, -yearpublished) %>% -->
+<!--         filter(grepl("usersrated", wflow)) %>% -->
+<!--         spread(wflow, pred) %>% -->
+<!--         left_join(., games_upcoming %>% -->
+<!--                           select(game_id, -->
+<!--                                  name, -->
+<!--                                  bayesaverage, -->
+<!--                                  usersrated), -->
+<!--                   by = c("game_id", "name")) %>% -->
+<!--     #@    filter(bayesaverage > 0) %>% -->
+<!--    #     rename(pred_xgbTree = usersrated_xgbTree) %>% -->
+<!--         rename(pred_stan = usersrated_stan, -->
+<!--                pred_xgbTree = usersrated_xgbTree) %>% -->
+<!--         arrange(desc(pred_xgbTree)) %>% -->
+<!--  #       mutate(estimated = pred_xgbTree) %>% -->
+<!--        # select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>% -->
+<!--         rename(ID = game_id, -->
+<!--                Published = yearpublished, -->
+<!--                Name = name, -->
+<!--                UsersRated = usersrated, -->
+<!--                Predicted = pred_xgbTree) %>% -->
+<!--         select(ID, Published, Name, UsersRated, Predicted) %>% -->
+<!--   #      select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>% -->
+<!--         DT::datatable() -->
 
-```
+<!-- ``` -->
 
-## Average Rating
+<!-- ## Average Rating -->
 
-```{r interactive table for predictions average}
+<!-- ```{r interactive table for predictions average} -->
 
-preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-        filter(grepl("average", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage,
-                                 usersrated,
-                                 average),
-                  by = c("game_id", "name")) %>%
-    #    filter(bayesaverage > 0) %>%
-   #     rename(pred_xgbTree = average_xgbTree) %>%
-        rename(pred_stan = average_stan,
-               pred_xgbTree = average_xgbTree) %>%
-        arrange(desc(pred_xgbTree)) %>%
- #       mutate(estimated = pred_xgbTree) %>%
-       # select(game_id, name, yearpublished, average, pred_stan, pred_xgbTree) %>%
-        mutate(Outcome = "Average") %>%
-        rename(ID = game_id,
-               Published = yearpublished,
-               Name = name,
-               UsersRated = usersrated,
-               Average = average,
-               Predicted = pred_xgbTree) %>%
-        select(ID, Published, Name, UsersRated, Average, Predicted) %>%
-        mutate_if(is.numeric, round, 2) %>%
-  #      select(game_id, name, yearpublished, average, pred_stan, pred_xgbTree) %>%
-        DT::datatable()
+<!-- preds_upcoming_tidied %>% -->
+<!--         gather("wflow", "pred", -->
+<!--                -game_id, -name, -yearpublished) %>% -->
+<!--         filter(grepl("average", wflow)) %>% -->
+<!--         spread(wflow, pred) %>% -->
+<!--         left_join(., games_upcoming %>% -->
+<!--                           select(game_id, -->
+<!--                                  name, -->
+<!--                                  bayesaverage, -->
+<!--                                  usersrated, -->
+<!--                                  average), -->
+<!--                   by = c("game_id", "name")) %>% -->
+<!--     #    filter(bayesaverage > 0) %>% -->
+<!--    #     rename(pred_xgbTree = average_xgbTree) %>% -->
+<!--         rename(pred_stan = average_stan, -->
+<!--                pred_xgbTree = average_xgbTree) %>% -->
+<!--         arrange(desc(pred_xgbTree)) %>% -->
+<!--  #       mutate(estimated = pred_xgbTree) %>% -->
+<!--        # select(game_id, name, yearpublished, average, pred_stan, pred_xgbTree) %>% -->
+<!--         mutate(Outcome = "Average") %>% -->
+<!--         rename(ID = game_id, -->
+<!--                Published = yearpublished, -->
+<!--                Name = name, -->
+<!--                UsersRated = usersrated, -->
+<!--                Average = average, -->
+<!--                Predicted = pred_xgbTree) %>% -->
+<!--         select(ID, Published, Name, UsersRated, Average, Predicted) %>% -->
+<!--         mutate_if(is.numeric, round, 2) %>% -->
+<!--   #      select(game_id, name, yearpublished, average, pred_stan, pred_xgbTree) %>% -->
+<!--         DT::datatable() -->
 
-```
+<!-- ``` -->
 
-## Geek Rating
+<!-- ## Geek Rating -->
 
-```{r interactive table for predictions geek rating}
+<!-- ```{r interactive table for predictions geek rating} -->
 
-preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-        filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 usersrated,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
- #       filter(bayesaverage > 0) %>%
-        rename(pred_xgbTree = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(pred_xgbTree)) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        rename(ID = game_id,
-               Published = yearpublished,
-               Name = name,
-               UsersRated = usersrated,
-               GeekRating = bayesaverage,
-               Predicted = pred_xgbTree) %>%
-        select(ID, Published, Name, GeekRating, Predicted) %>%
-       # select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>%
-        DT::datatable()
+<!-- preds_upcoming_tidied %>% -->
+<!--         gather("wflow", "pred", -->
+<!--                -game_id, -name, -yearpublished) %>% -->
+<!--         filter(grepl("bayesaverage", wflow)) %>% -->
+<!--         spread(wflow, pred) %>% -->
+<!--         left_join(., games_upcoming %>% -->
+<!--                           select(game_id, -->
+<!--                                  name, -->
+<!--                                  usersrated, -->
+<!--                                  bayesaverage), -->
+<!--                   by = c("game_id", "name")) %>% -->
+<!--  #       filter(bayesaverage > 0) %>% -->
+<!--         rename(pred_xgbTree = bayesaverage_indirect_xgbTree) %>% -->
+<!--         arrange(desc(pred_xgbTree)) %>% -->
+<!--         mutate_if(is.numeric, round, 2) %>% -->
+<!--         rename(ID = game_id, -->
+<!--                Published = yearpublished, -->
+<!--                Name = name, -->
+<!--                UsersRated = usersrated, -->
+<!--                GeekRating = bayesaverage, -->
+<!--                Predicted = pred_xgbTree) %>% -->
+<!--         select(ID, Published, Name, GeekRating, Predicted) %>% -->
+<!--        # select(game_id, name, yearpublished, usersrated, pred_stan, pred_xgbTree) %>% -->
+<!--         DT::datatable() -->
 
 
-```
+<!-- ``` -->
 
 
