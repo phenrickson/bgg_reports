@@ -745,7 +745,7 @@ prob_table = games_upcoming_probs %>%
                   by = c("username")) %>%
         select(-username, -username_tidied) %>%
         rename(username = username_abbr) %>%
-     #   filter(!(game_id %in% upcoming_flags$game_id)) %>%
+        filter(!(game_id %in% upcoming_flags$game_id)) %>%
                 group_by(username) %>%
                 arrange(desc(.pred_yes)) %>%
            #     mutate(rank = row_number()) %>%
@@ -866,8 +866,8 @@ make_reviewer_flextable_func = function(input_data, n=50) {
         flextable::color(j = c("Name",
                                "ID"),
                          color ="skyblue4") %>%
-        bold(., j = c("Name", "ID"),
-             part = 'body') %>%
+        # bold(., j = c("Name", "ID"),
+        #      part = 'body') %>%
         flextable::align(part = c("all"),
                          align = 'center',
                          j = c("Mean",
