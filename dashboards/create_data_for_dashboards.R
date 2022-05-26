@@ -10,7 +10,6 @@ source(here::here("functions/tidy_name_func.R"))
 source(here::here("functions/get_bgg_data_from_github.R"))
 })
 
-
 ##############################################
 ### load games from beefsack's bgg table ###
 print("loading daily games file from historical-bgg on github...")
@@ -139,13 +138,13 @@ games_estimated_averageweight = bgg_outcomes_final_workflows %>%
         unnest(preds) %>%
         rename(est_averageweight = .pred)
 
-game_info %>%
-        left_join(., games_estimated_averageweight,
-                  by = c("game_id")) %>%
-        ggplot(., aes(x=est_averageweight,
-                      y=averageweight))+
-        geom_point(alpha = 0.5)+
-        theme_minimal()
+# game_info %>%
+#         left_join(., games_estimated_averageweight,
+#                   by = c("game_id")) %>%
+#         ggplot(., aes(x=est_averageweight,
+#                       y=averageweight))+
+#         geom_point(alpha = 0.5)+
+#         theme_minimal()
 
 
 ###############################################################
@@ -170,10 +169,83 @@ games_complexity_adjusted = complexity_adjusted_model %>%
         arrange(desc(adj_bayesaverage)) %>%
         select(adj_average, adj_bayesaverage, game_id)
 
+###############################################################
+#### nearest neighbors 
+
+print("now creating datasets with nearest neighbors...")
+
+### pca recipes and number of pcs used for distance ####
+pca_recipe = readr::read_rds(here::here("models", "active", "pca_recipe.Rds"))
+pca_trained = readr::read_rds(here::here("models", "active", "pca_trained.Rds"))
+number_pcs = paste("PC", seq(1, 50), sep="")
+
+### functions
+source(here::here("functions", "n_min_func.R"))
+source(here::here("functions", "n_max_func.R"))
+source(here::here("functions", "find_neighbors_max_func.R"))
+source(here::here("functions", "find_neighbors_min_func.R"))
+source(here::here("functions", "dist_cosine_func.R"))
+source(here::here("functions", "dist_euclidean_func.R"))
+source(here::here("functions", "game_shap_func.R"))
+
+# games to run through function, including original template + newly released games
+pca_input = bind_rows(pca_recipe$template,
+                      games_model %>%
+                              filter(!(game_id %in% (pca_recipe$template %>% pull(game_id)))) %>%
+                              left_join(., 
+                                        games_estimated_averageweight,
+                                        by = c("game_id")) %>%
+                              select(-averageweight) %>%
+                              rename(averageweight = est_averageweight))
+                      
+# apply pca to game, bind to pca
+pca_out = pca_recipe %>%
+        prep(strings_as_factor = F) %>%
+        bake(new_data = pca_input) %>%
+        set_names(., gsub("PC0", "PC", gsub("PC00", "PC", names(.))))
+
+# get into matrix
+pca_mat = pca_out %>%
+        mutate(.row = row_number()) %>%
+        select(.row, starts_with("PC")) %>%
+        select(.row, all_of(number_pcs)) %>%
+        column_to_rownames(".row") %>%
+        as.matrix()
+
+# get cosine similarity between all games
+dist_cosine = dist_cosine_func(pca_mat)
+
+# get neighbors from cosine
+game_neighbors_cosine = find_neighbors_max_func(dist_cosine, 50) %>%
+        left_join(., pca_out %>%
+                          mutate(.row = row_number()) %>%
+                          select(.row, game_id, name, average, bayesaverage),
+                  by = c(".row")) %>%
+        left_join(., pca_out %>%
+                          mutate(.row_neighbor = row_number(),
+                                 neighbor_usersrated = usersrated,
+                                 neighbor_id = game_id,
+                                 neighbor_name = name,
+                                 neighbor_average = average,
+                                 neighbor_yearpublished = yearpublished,
+                                 neighbor_bayesaverage = bayesaverage) %>%
+                          select(.row_neighbor, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage, neighbor_usersrated, neighbor_yearpublished, starts_with("PC")),
+                  by = c(".row_neighbor")) %>%
+        left_join(.,
+                  pca_input %>%
+                          select(game_id, averageweight) %>%
+                          rename(neighbor_averageweight = averageweight,
+                                 neighbor_id = game_id),
+                  by = c("neighbor_id")) %>%
+        rename(similarity = dist) %>%
+        mutate(score = similarity*neighbor_bayesaverage)
+                         
+
 ####################################################
 ##### now create data sources for dashboards ######
 
 print("creating local data sources for dashboard...")
+
 # now join
 games_dashboard = game_info %>%
         left_join(., games_estimated_averageweight,
@@ -200,6 +272,9 @@ readr::write_rds(game_types_filtered,
 
 readr::write_rds(games_playercounts,
                  file = here::here("dashboards", "data", "games_playercounts.Rdata"))
+
+readr::write_rds(game_neighbors_cosine,
+                 file = here::here("dashboards", "data", "game_neighbors_cosine.Rdata"))
 
 print("done.")
 
