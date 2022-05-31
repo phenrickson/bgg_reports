@@ -9,7 +9,7 @@ output:
     keep_md: no
     fig.caption: yes
 params:
-  game_id: 182340
+  game_id: 302099
   number_pcs: 50
 ---
 
@@ -166,7 +166,6 @@ number_pcs = paste("PC", seq(1, params$number_pcs), sep="")
 
 # get template
 games_template = bgg_outcomes_recipe$template
-
 
 ```
 
@@ -412,7 +411,7 @@ game_model = game_info %>%
 ```
 
 
-```{r predict, warning=F}
+```{r predict, warning=F, include=F}
 
 # game_info with estimated averageweight
 upcoming_estimated_averageweight = bgg_outcomes_final_workflows %>%
@@ -578,14 +577,7 @@ game_model %>%
         mutate(`Player Count` = paste(minplayers, maxplayers, sep="-"),
                `Playing Time` = paste(as.character(playingtime), " min", sep="")) %>%
         mutate_if(is.numeric, replace_na, 0) %>%
-        # left_join(.,
-        #           estimated_values %>%
-        #                   rename(`Average ` = average,
-        #                          `Geek ` = baverage,
-        #                          `Complexity ` = avgweight),
-        #           by = c("ID" = "game_id")) %>%
         mutate_if(is.numeric, round, 2) %>%
-       # mutate_if(is.numeric, as.character) %>%
         mutate(Published = as.character(Published),
                ID = as.character(ID)) %>%
         mutate(Type = "Current") %>%
@@ -909,7 +901,6 @@ neighbors_cosine %>%
 
 Click on the ID or Name for any game to go its profile page on boardgamegeek.
 
-
 ## Most Similar, Highly Rated Games
 
 What games are similar to **`r paste(game_model$name[1])`** while also being highly rated by the boardgamegeek community? In this table I multiply every neighboring game's similarity score by its GeekRating. The resulting score is an attempt to balance these two quantities.
@@ -1091,8 +1082,9 @@ tile_plot(neighbors_cosine %>%
           25,
           params$game_id)+
         ylab("Games")+
-        ggtitle("Why are Games Similar?",
-                subtitle = "Plotting game profiles on first 25 principal components of variation")
+        ggtitle("Why are Games Considered Similar?",
+                subtitle = "Plotting game profiles on first 25 principal components of variation")+
+        theme(axis.text.x = element_text(angle = 90))
 
 ```
 
@@ -1100,7 +1092,7 @@ tile_plot(neighbors_cosine %>%
 ### Examining Components
 
 #What are these components? The following plot shows which features contribute the most to each component.
-# 
+# # 
 # plot_components+
 #         ggtitle("PCA Component Loadings",
 #                 subtitle = str_wrap("Displaying top ten feature contributions to each principal component used to determine similarity", 90))+
