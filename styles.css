@@ -2,8 +2,3 @@
      width: 100%;
      max-width: unset;
  }
- 
-body {
-    position: absolute;
-    left: 300px;
-}

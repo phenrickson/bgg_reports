@@ -16,3 +16,4 @@ navbar:
 output:
   html_document:
     theme: cerulean
+    css: styles.css 
