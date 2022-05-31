@@ -177,7 +177,7 @@ print("now creating datasets with nearest neighbors...")
 ### pca recipes and number of pcs used for distance ####
 pca_recipe = readr::read_rds(here::here("models", "active", "pca_recipe.Rds"))
 pca_trained = readr::read_rds(here::here("models", "active", "pca_trained.Rds"))
-number_pcs = paste("PC", seq(1, 50), sep="")
+number_pcs = paste("PC", seq(1, 20), sep="")
 
 ### functions
 source(here::here("functions", "n_min_func.R"))
@@ -187,6 +187,16 @@ source(here::here("functions", "find_neighbors_min_func.R"))
 source(here::here("functions", "dist_cosine_func.R"))
 source(here::here("functions", "dist_euclidean_func.R"))
 source(here::here("functions", "game_shap_func.R"))
+
+# save output
+# replace and save
+games_model_estimated = games_model %>%
+        filter(!(game_id %in% (pca_recipe$template %>% pull(game_id)))) %>%
+        left_join(., 
+                  games_estimated_averageweight,
+                  by = c("game_id")) %>%
+        select(-averageweight) %>%
+        rename(averageweight = est_averageweight)
 
 # games to run through function, including original template + newly released games
 pca_input = bind_rows(pca_recipe$template,
@@ -263,6 +273,19 @@ game_types_filtered = game_types %>%
                        type == 'publisher' |
                        type == 'mechanic')
 
+
+# games with features for modeling and estimated averageweight for upcoming games
+games_model_estimated = games_model %>%
+        filter(!(game_id %in% (pca_recipe$template %>% pull(game_id)))) %>%
+        left_join(., 
+                  games_estimated_averageweight,
+                  by = c("game_id")) %>%
+        select(-averageweight) %>%
+        rename(averageweight = est_averageweight) %>%
+        bind_rows(.,
+                  games_model %>%
+                          filter((game_id %in% (pca_recipe$template %>% pull(game_id)))))
+
 # save these locally for the dashboard
 readr::write_rds(games_dashboard,
                  file = here::here("dashboards", "data", "games_dashboard.Rdata"))
@@ -275,6 +298,10 @@ readr::write_rds(games_playercounts,
 
 readr::write_rds(game_neighbors_cosine,
                  file = here::here("dashboards", "data", "game_neighbors_cosine.Rdata"))
+
+readr::write_rds(games_model_estimated,
+                 file = here::here("dashboards", "data", "games_model_estimated.Rdata"))
+
 
 print("done.")
 
