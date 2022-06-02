@@ -1,5 +1,5 @@
 ---
-title: "Comparing Boardgames via Unsupervised Learning"
+title: "Finding Similar Boardgames"
 output: 
   html_document:
     toc: TRUE #adds a Table of Contents
@@ -109,9 +109,49 @@ bgg_today = get_bgg_data_from_github(Sys.Date()-1)
 
 # What is this Analysis? {-}
 
-This notebook details my approach to clustering board games and finding nearest neighbors.
+This notebook details my approach to clustering board games and finding nearest neighbors for any given game.
 
-For this analysis, we will restrict ourserlves to games published through `r params$end_training_year`. We will validate the performance of our models by evaluating their performance in predicting games published in `r params$end_training_year + 1`.
+For this analysis, I will develop my methods for games games published through `r params$end_training_year`, then apply them to future games.
+
+# Motivation {-}
+
+'Oh, you haven't played a lot of games but you like Catan? You should check out Concordia.'
+
+'You like Betrayal at the House on the Hill? You should check out the other games in that series, like Betrayal at Baldur's Gate or Betrayal Legacy. Or, you might enjoy something like Mansions of Madness or Dead of Winter.'
+
+'Your favorite game is High Frontier 4 All? Uh, would you look at that, I'm late for a dental appointment.'
+
+If you've been in the hobby of board games for a while, you probably have a mental mapping of games that you use to make recommendations to friends, family, and colleagues. If someone mentions that they're looking for a new game, you generally ask for some examples of games they like. Based on what they tell you, you start thinking about the various features of games (complexity, playing time, theme, price), and then try to identify something that will be similar to what they told you.
+
+You are, in other words, a recommendation engine. And probably a pretty darn good one. You receive an input, push it through your mental map (a function), and return an output. Over time, you've fine tuned your function and have gotten pretty good at ensuring that output is pretty useful.
+
+But you do have some limits. If someone mentions a game you've never heard of before, it will be difficult to place it on your mental map. You also, presumably, have other things going on in your life (showering, eating, cleaning the cat litter) that prevent you from being on demand to to recommend new games to anyone who asks. And as good as you are, you might also not recognize some patterns that exist between games - as sharp as your mental mapping might be, it's hard to take into account all of the information that exists and recommend the best possible fit.
+
+Fortunately for us, computers have nothing better to do and can process lots of information whenever we want (for now at least; see The Matrix). Rather than relying on our mental map, we can try to use data collected about board games in order to recreate what we are currently doing manually.
+
+# How do we find similar games?
+
+```{r create uni dimnesionsal, fig.height=2, caption = 'Comparing units on one dimension'}
+
+alphabet = toupper(letters) %>%
+        as_tibble() %>%
+        mutate(x = 1:nrow(.))
+
+ggplot(alphabet, aes(x=x, y=0)) +
+  geom_line(size=1) +
+  geom_point(shape = 108, size = 5) +
+  geom_text(aes(label=value,hjust=0.5, vjust=-2))+
+  geom_text(aes(label=x),hjust=.5, vjust=2.5) +
+  theme_void()+
+  theme(axis.line.y=element_blank(),
+          axis.text.y=element_blank(),
+          axis.ticks.y=element_blank(),
+          axis.title.y=element_blank(),
+          panel.grid.minor.y=element_blank(),
+          panel.grid.major.y=element_blank())
+
+```
+
 
 # The Data
 
@@ -410,18 +450,9 @@ We can then bake these recipes on the training set.
 
 ```{r bake pca, echo=T}
 
-# # prep recipe for categories
-# pca_categories_trained = pca_categories_recipe %>%
-#         prep(games_train)
-
 # prep recipes for mechanics
 pca_mechanics_trained = pca_mechanics_recipe %>%
         prep(games_train)
-
-# # extract componenbts from each of these
-# pca_categories_components = pca_categories_trained %>%
-#         tidy(id = "pca") %>%
-#         mutate(component = gsub("PC0", "PC", gsub("PC00", "PC", component)))
 
 pca_mechanics_components = pca_mechanics_trained %>%
         tidy(id = "pca") %>%
@@ -549,7 +580,7 @@ Here, the first few components explain more of the variation, and it takes about
 
 What contributes to each of those components? We can plot the top 20 variables that contribute the most to each component for the first 10 principal components.
 
-```{r pca loadings for top ten components}
+```{r pca loadings for top ten components, fig.height=8}
 
 number_pcs = paste("PC", seq(1, 10, 1), sep="")
 
@@ -669,7 +700,7 @@ find_neighbors_max_func = function(input_dist, num_neighbors) {
 ```{r get cosine distances}
 
 # first number of PCs that summarizes 50% of the variation
-number_pcs = paste("PC", seq(1, 25), sep="")
+number_pcs = paste("PC", seq(1, 50), sep="")
 
 # # all
 # number_pcs = pca_mechanics_rotation %>% 
@@ -742,7 +773,7 @@ hist(dist_euclidean[sample(1:nrow(pca_mat), 1000),],
 
 ```
 
-Let's look at the neighbors for a sample of games.
+Let's look at the neighbors for a sample of selected games.
 
 ```{r get all neighbors for a sample of games}
 
@@ -824,20 +855,34 @@ samp_neighbors_euclidean = find_neighbors_min_func(dist_euclidean[samp_rows,], n
 
 ```{r samp neighbors examine}
 
-temp = 'Inis'
+#temp = 'Inis'
 
 samp_neighbors_cosine %>%
         select(game_id, name, similarity, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage, score) %>%
-        filter(name == temp) %>%
-        head(50) %>%
-        arrange(desc(score)) %>%
-        rename(`similarity*bayesaverage` = score)  
+        group_by(game_id) %>%
+ #       arrange(desc(similarity)) %>%
+        slice_max(order_by = similarity,
+                  n = 50,
+                  with_ties =F) %>%
+        ungroup() %>%
+    #    filter(name == temp) %>%
+        select(-game_id) %>%
+        arrange(name) %>%
+     #   arrange(desc(score)) %>%
+        ungroup() %>%
+  #      rename(`similarity*bayesaverage` = score)  %>%
+       mutate(name = factor(name)) %>%
+        select(name, neighbor_name, neighbor_average, neighbor_bayesaverage, score) %>%
+        DT::datatable(filter = 'top')
 
-samp_neighbors_euclidean%>%
-        select(game_id, name, dist, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage) %>%
-        arrange(dist) %>%
-        filter(name == temp) %>%
-        head(50)
+
+# samp_neighbors_euclidean%>%
+#         select(game_id, name, dist, neighbor_id, neighbor_name, neighbor_average, neighbor_bayesaverage) %>%
+#         arrange(dist) %>%
+#         filter(name == temp) %>%
+#         head(50) %>%
+#         mutate(name = factor(name)) %>%
+#         DT::datatable()
 
 ```
 
@@ -995,10 +1040,9 @@ tile_plot(neighbors_cosine %>%
           active_games %>% filter(name == temp) %>% pull(game_id)) +
         ylab("Games")
 
-
 neighbors_cosine %>%
         filter(neighbor_yearpublished < 2021 | neighbor_name == temp) %>%
-        filter(name == 'temp')
+        filter(name == temp)
 ```
 
 

@@ -2,3 +2,4 @@ data/all_bgg_ids_raw.Rdata
 data/all_game_ids_tidied.Rdata
 .game_types.Rdata.icloud
 .games_model.Rdata.icloud
+game_neighbors_cosine.Rds

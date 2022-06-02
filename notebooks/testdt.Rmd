@@ -1,0 +1,166 @@
+---
+title: "Predicting Upcoming Games for Reviewers"
+output:
+  html_document:
+    toc: yes
+    number_sections: yes
+    toc_float: yes
+    keep_md: no
+    fig.caption: yes
+  pdf_document:
+    toc: yes
+---
+
+# First
+
+But you do have some limits. If someone mentions a game you've never heard of before, it will be difficult to place it on your mental map. You also, presumably, have other things going on in your life (showering, eating, cleaning the cat litter) that prevent you from being on demand to to recommend new games to anyone who asks. And as good as you are, you might also not recognize some patterns that exist between games - as sharp as your mental mapping might be, it's hard to take into account all of the information that exists and recommend the best possible fit.
+
+Fortunately for us, computers have nothing better to do and can process lots of information whenever we want (for now at least; see The Matrix). Rather than relying on our mental map, we can try to use data collected about board games in order to recreate what we are currently doing manually.
+
+## How do we find similar games?
+
+```{r load and set packages, echo=F, warning=F, message=F,  results = 'hide', include=F}
+
+knitr::opts_chunk$set(echo = F,
+                      error = F,
+                      warning=F,
+                      dev="png",
+                      fig.width = 10,
+                      fig.height = 6)
+
+options(knitr.duplicate.label = "allow")
+
+options(scipen=999)
+
+#source
+source(here::here("scripts/load_packages.R"))
+source(here::here("functions/theme_phil.R"))
+library(patchwork)
+library(DT)
+
+# set_flextable_defaults(theme_fun = theme_booktabs,
+#                        font.color = "black",
+#   padding.bottom = 6, 
+#   padding.top = 6,
+#   padding.left = 6,
+#   padding.right = 6,
+#   background.color = "white")
+
+library(flextable)
+set_flextable_defaults(theme_fun = theme_alafoli,
+                       font.color = "grey10",
+  padding.bottom = 6, 
+  padding.top = 6,
+  padding.left = 6,
+  padding.right = 6,
+  background.color = "white")
+
+```
+
+# Second
+
+```{r reviewers}
+
+# list of reviewers
+reviewers = c("Gyges",
+               "ZeeGarcia",
+               "Quinns",
+               "rahdo",
+               "Watch%20It%20Played",
+               "J_3MBG",
+               "VWValker",
+               "aboardgamebarrage",
+          #     "markbesada",
+           #    "Neilan",
+               "Alabaster%20Crippens")
+
+
+# tidy
+reviewers_tidied = gsub("%20", "", reviewers)
+
+# make function for displaying in flextables
+display_name_func = function(x) {
+        
+        x %>%
+                gsub("%20", "", .) %>%
+                abbreviate(., minlength=8) %>%
+                str_pad(., width=8, side = "both")
+               
+}
+
+# make df with versions of names
+reviewers_df = data.frame("username" = reviewers,
+                          "username_tidied" = gsub("%20", "", reviewers),
+                          "username_abbr" = display_name_func(reviewers))
+               
+
+```
+
+
+```{r read most recent}
+
+games_upcoming_probs = readr::read_rds(here::here("predictions/reviewer_probs_2022-05-25.Rdata"))
+
+```
+
+
+```{r make datatable}
+
+prob_table = games_upcoming_probs %>%
+        select(yearpublished, game_id, name, .pred_yes, username) %>%
+        left_join(., reviewers_df %>%
+                          mutate(username = username_tidied),
+                  by = c("username")) %>%
+        select(-username, -username_tidied) %>%
+        rename(username = username_abbr) %>%
+     #   filter(!(game_id %in% upcoming_flags$game_id)) %>%
+                group_by(username) %>%
+                arrange(desc(.pred_yes)) %>%
+           #     mutate(rank = row_number()) %>%
+      #          select(-.pred_yes) %>%
+     #   spread(username, rank) %>%
+                spread(username, .pred_yes) %>%
+        mutate(Mean = rowMeans(select(., all_of(reviewers_df$username_abbr)))) %>%
+               # mutate(Mean = round(Mean, 2)) %>%
+        select(yearpublished, game_id, name, Mean, everything()) %>%
+                mutate_if(is.numeric, round, 2) %>%
+                mutate_at(vars(reviewers_df$username_abbr),
+                ~ case_when(. == 1 ~ .99,
+                            . == 0 ~ .01,
+                            TRUE ~ .)) %>%
+        arrange(desc(Mean)) %>%
+              #  arrange(Mean) %>%
+        mutate_at(vars(c("yearpublished",
+                         "game_id", 
+                         "name")),
+                       ~ as.character(.)) %>%
+        mutate(yearpublished = factor(yearpublished)) %>%
+        rename(Published = yearpublished,
+               ID = game_id,
+               Name = name) %>%
+        mutate(Name = paste('<a href="https://boardgamegeek.com/boardgame/', ID, '">', Name, '</a>', sep="")) %>%
+        select(-ID)
+
+
+# make breaks
+breaks<-quantile(seq(.01, .99, .01), probs = seq(.01, .99, .05))
+
+#  breaks = weight_deciles
+colorRamp=colorRampPalette(c("white", "deepskyblue1"))
+col_palette <- colorRamp(length(breaks)+1)
+
+# display table
+prob_table %>%
+        datatable(escape=F,
+                  filter = 'top',
+                  options = list(pageLength = 25,
+                                 scrollX=T,
+                                 autowidth=F,
+                                 columnDefs = list(list(className = 'dt-center', targets = which(names(prob_table)!='Name')-1))),
+                             #    columnDefs=list(list(width = '30px', targets = c(which(names(prob_table)!='Name')-1)))),
+                                                # list(width = '400px', targets = c(which(names(prob_table)=='Name')-1)))),
+                                       #  targets = seq(3, ncol(prob_table)-1))),
+                  rownames = F) %>%
+        formatStyle(names(prob_table %>% select(-Published, -Name)), backgroundColor = styleInterval(breaks, col_palette))
+```
+
