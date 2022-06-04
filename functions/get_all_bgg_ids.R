@@ -43,10 +43,12 @@ get_all_bgg_ids = function(minpages = 1,
                         mutate(stripped = gsub("\\\t", "", gsub("\\\n", "", value))) %>%
                         select(stripped) %>%
                         filter(!grepl("Board Game Rank", stripped)) %>%
+                        filter(!grepl("dfp-inline-post", stripped)) %>%
                         pull(stripped)
                 
                 # extract in between parnetheses
                 list = str_extract_all(text, "\\([^()]+\\)")
+                
                 # fill empty
                 list[sapply(list, is_empty)] <- NA
                 
