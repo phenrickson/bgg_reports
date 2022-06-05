@@ -20,8 +20,10 @@ function(input_game_id) {
         info_parser = function(var) {
                 
                 foreach(i = 1:length(input_game_id),
-                        .errorhandling = 'pass',
+                        .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
+                                
+                                
                         getNodeSet(parsed, "//item")[[i]][paste(var)] %>%
                                 lapply(., xmlToList) %>%
                                 do.call(rbind, .) %>% 
@@ -57,7 +59,7 @@ function(input_game_id) {
         # summary of game
         summary_parser = function(var) {
                 foreach(i = 1:length(input_game_id), 
-                        .errorhandling = 'pass',
+                        .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
                         getNodeSet(parsed, "//item")[[i]][paste(var)] %>%
                                 lapply(., xmlToList) %>%
@@ -82,7 +84,7 @@ function(input_game_id) {
         
         # get game summary
         game_summary = foreach(h = 1:length(summary),
-                               .errorhandling = 'pass',
+                               .errorhandling = 'remove',
                                .combine = bind_rows) %do% {
                                        summary_parser(var = summary[h])
                                }
@@ -103,7 +105,7 @@ function(input_game_id) {
         # function
         stats_parser = function(var) {
                 foreach(i = 1:length(input_game_id), 
-                        .errorhandling = 'pass',
+                        .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
                         
                         getNodeSet(parsed, "//ratings")[[i]][paste(var)] %>%
@@ -119,7 +121,7 @@ function(input_game_id) {
         
         # get stats
         game_stats = foreach(h=1:length(stats),
-                             .errorhandling = 'pass',
+                             .errorhandling = 'remove',
                              .combine = bind_rows) %do% {
                 stats_parser(var = stats[h])
         }
@@ -128,7 +130,7 @@ function(input_game_id) {
         # function
         ranks_parser = function(var) {
                 foreach(i = 1:length(input_game_id), 
-                        .errorhandling = 'pass',
+                        .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
                         
                         getNodeSet(parsed, "//ranks")[[i]][paste(var)] %>%
@@ -147,7 +149,7 @@ function(input_game_id) {
         poll_parser = function(input_game_id) {
                 foreach(i = 1:length(input_game_id), 
                         .combine = bind_rows, 
-                        .errorhandling = 'pass') %do% {
+                        .errorhandling = 'remove') %do% {
                                 
                                 poll = getNodeSet(parsed, "//item")[[i]]['poll'][[1]] # getting first element from the poll
                                 results = getNodeSet(poll, 'results')  %>%
@@ -203,8 +205,21 @@ function(input_game_id) {
                                   spread(type, value),
                           by = c("game_id"))
         
+        
+        # list of ids put in
+        input_game_ids = input_game_id
+        
+        # list of ids returned
+        returned_game_ids = game_features$game_id
+        
+        # list of ids not returned from input
+        missing_game_ids = input_game_id[!(input_game_ids %in% returned_game_ids)]
+        
         # combine output
         output = list("timestamp" = Sys.time(),
+                      "input_game_ids" = input_game_ids,
+                      "returned_game_ids" = returned_game_ids,
+                      "missing_game_ids" = missing_game_ids,
                       "game_description" = game_description,
                       "game_names" = game_names,
                       "game_thumbnails" = game_thumbnails,
