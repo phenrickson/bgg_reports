@@ -72,14 +72,13 @@ check_ids = map(batches_returned, "game_features") %>%
 all_game_ids$game_id[!(all_game_ids$game_id %in% check_ids$game_id)]
         
 
-
 # check the lengths of each batch
 check = data.frame(length = lengths(batches_returned),
            batch = seq(batches_returned))
 
 # batches with prpblems
 problems = check %>%
-        filter(length!=9) %>%
+        filter(length!=12) %>%
         pull(batch)
 
 # check length
