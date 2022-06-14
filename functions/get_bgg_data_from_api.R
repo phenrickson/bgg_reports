@@ -16,56 +16,70 @@ function(input_game_id) {
         # parse
         parsed = xmlInternalTreeParse(doc, useInternalNodes = T)
         
+        # get returned ids from this
+        idNodes <- getNodeSet(parsed, "//item[@id]")
+        
+        # returned game_ids
+        returned_game_ids <- lapply(idNodes, function(x) xmlAttrs(x)['id']) %>%
+                do.call(rbind, .) %>%
+                as.integer(.)
+
         # get thumbnails
-        info_parser = function(var) {
+        info_parser = function(function_ids, var) {
                 
-                foreach(i = 1:length(input_game_id),
-                        .errorhandling = 'remove',
+                foreach(i = 1:length(function_ids),
                         .combine = bind_rows) %do% {
                                 
+                                getNodeSet(parsed, "//item")[[i]][paste(var)] %>%
+                                        lapply(., xmlToList) %>%
+                                        do.call(rbind, .) %>%
+                                        as_tibble() %>%
+                                        mutate(game_id = function_ids[i]) %>%
+                                        select(game_id, everything())
                                 
-                        getNodeSet(parsed, "//item")[[i]][paste(var)] %>%
-                                lapply(., xmlToList) %>%
-                                do.call(rbind, .) %>% 
-                                as_tibble() %>%
-                                mutate(game_id = input_game_id[i]) %>% 
-                                select(game_id, everything())
+                        
                 }
                 
         }
         
         ### get specific output
-        game_names = info_parser(var = 'name')
+        game_names = info_parser(function_ids = returned_game_ids,
+                                 var = 'name')
         
         # thumbnails
-        game_thumbnails = info_parser(var = 'thumbnail') %>%
+        game_thumbnails = info_parser(function_ids = returned_game_ids,
+                                      var = 'thumbnail') %>%
                 set_names(., c("game_id", "thumbnail"))
         
         # description
-        game_description = info_parser(var = 'description') %>%
+        game_description = info_parser(function_ids = returned_game_ids,
+                                       var = 'description') %>%
                 set_names(., c("game_id", "description"))
         
         # image
-        game_image = info_parser(var = 'image') %>%
+        game_image = info_parser(function_ids = returned_game_ids,
+                                 var = 'image') %>%
                 set_names(., c("game_id", "image"))
         
         # categories, mechanics, etc
         game_categories= suppressWarnings(
-                info_parser(var = 'link') %>%
+                info_parser(function_ids = returned_game_ids,
+                            var = 'link') %>%
                         select(game_id, type, id, value)
         )
         
         ## summary info
         # summary of game
-        summary_parser = function(var) {
-                foreach(i = 1:length(input_game_id), 
-                        .errorhandling = 'remove',
+        summary_parser = function(function_ids,
+                                  var) {
+                
+                foreach(i = 1:length(function_ids), 
                         .combine = bind_rows) %do% {
                         getNodeSet(parsed, "//item")[[i]][paste(var)] %>%
                                 lapply(., xmlToList) %>%
                                 do.call(rbind, .) %>% 
                                 as_tibble() %>%
-                                mutate(game_id = input_game_id[i]) %>% 
+                                mutate(game_id = function_ids[i]) %>% 
                                 mutate(type = paste(var)) %>%
                                 select(game_id, everything()) %>%
                                 select(game_id, type, value)
@@ -84,9 +98,10 @@ function(input_game_id) {
         
         # get game summary
         game_summary = foreach(h = 1:length(summary),
-                               .errorhandling = 'remove',
+                           #    .errorhandling = 'remove',
                                .combine = bind_rows) %do% {
-                                       summary_parser(var = summary[h])
+                                       summary_parser(function_ids = returned_game_ids,
+                                                      var = summary[h])
                                }
         
         # statistics
@@ -103,16 +118,16 @@ function(input_game_id) {
                   "averageweight")
         
         # function
-        stats_parser = function(var) {
-                foreach(i = 1:length(input_game_id), 
-                        .errorhandling = 'remove',
+        stats_parser = function(function_ids,
+                                var) {
+                foreach(i = 1:length(function_ids), 
                         .combine = bind_rows) %do% {
                         
                         getNodeSet(parsed, "//ratings")[[i]][paste(var)] %>%
                                 lapply(., xmlToList) %>%
                                 do.call(rbind, .) %>%
                                 as_tibble() %>%
-                                mutate(game_id = input_game_id[i]) %>%
+                                mutate(game_id = function_ids[i]) %>%
                                 mutate(type = paste(var)) %>%
                                 select(game_id, everything()) %>%
                                 select(game_id, type, value)
@@ -121,15 +136,16 @@ function(input_game_id) {
         
         # get stats
         game_stats = foreach(h=1:length(stats),
-                             .errorhandling = 'remove',
                              .combine = bind_rows) %do% {
-                stats_parser(var = stats[h])
+                stats_parser(function_ids = returned_game_ids,
+                             var = stats[h])
         }
         
         # get ranks
         # function
-        ranks_parser = function(var) {
-                foreach(i = 1:length(input_game_id), 
+        ranks_parser = function(function_ids,
+                                var) {
+                foreach(i = 1:length(function_ids), 
                         .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
                         
@@ -137,19 +153,20 @@ function(input_game_id) {
                                 lapply(., xmlToList) %>%
                                 do.call(rbind, .) %>%
                                 as_tibble() %>%
-                                mutate(game_id = input_game_id[i]) %>%
+                                mutate(game_id = function_ids[i]) %>%
                                 mutate(type = paste(var)) %>%
                                 select(game_id, everything())
                 }
         }
         
         # get ranks
-        game_ranks = ranks_parser('rank')
+        game_ranks = ranks_parser(function_ids =  returned_game_ids,
+                                  var = 'rank')
         
-        poll_parser = function(input_game_id) {
-                foreach(i = 1:length(input_game_id), 
-                        .combine = bind_rows, 
-                        .errorhandling = 'remove') %do% {
+        # for parsing the poll
+        poll_parser = function(function_ids) {
+                foreach(i = 1:length(function_ids), 
+                        .combine = bind_rows) %do% {
                                 
                                 poll = getNodeSet(parsed, "//item")[[i]]['poll'][[1]] # getting first element from the poll
                                 results = getNodeSet(poll, 'results')  %>%
@@ -179,12 +196,12 @@ function(input_game_id) {
                                         return = bind_cols(
                                                 numplayers,
                                                 votes) %>%
-                                                mutate(game_id = input_game_id[i]) %>% 
+                                                mutate(game_id = function_ids[i]) %>% 
                                                 select(game_id, numplayers, value, numvotes) 
                                 }
                                 
                                 else {
-                                        return = tibble(game_id = input_game_id[i]) 
+                                        return = tibble(game_id = function_ids[i]) 
                                 }
                                 
                                 return
@@ -194,8 +211,7 @@ function(input_game_id) {
         }
         
         # votes for each games
-        game_playercounts = poll_parser(input_game_id)
-        
+        game_playercounts = poll_parser(function_ids = returned_game_ids)
         
         ## pivot some of this for output
         game_features = game_summary %>%
@@ -205,12 +221,8 @@ function(input_game_id) {
                                   spread(type, value),
                           by = c("game_id"))
         
-        
         # list of ids put in
         input_game_ids = input_game_id
-        
-        # list of ids returned
-        returned_game_ids = game_features$game_id
         
         # list of ids not returned from input
         missing_game_ids = input_game_id[!(input_game_ids %in% returned_game_ids)]
