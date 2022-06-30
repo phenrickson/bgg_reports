@@ -28,6 +28,7 @@ function(input_game_id) {
         info_parser = function(function_ids, var) {
                 
                 foreach(i = 1:length(function_ids),
+                        .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
                                 
                                 getNodeSet(parsed, "//item")[[i]][paste(var)] %>%
@@ -71,6 +72,7 @@ function(input_game_id) {
         ## summary info
         # summary of game
         summary_parser = function(function_ids,
+                                  .errorhandling = 'remove',
                                   var) {
                 
                 foreach(i = 1:length(function_ids), 
@@ -98,7 +100,7 @@ function(input_game_id) {
         
         # get game summary
         game_summary = foreach(h = 1:length(summary),
-                           #    .errorhandling = 'remove',
+                               .errorhandling = 'remove',
                                .combine = bind_rows) %do% {
                                        summary_parser(function_ids = returned_game_ids,
                                                       var = summary[h])
@@ -121,6 +123,7 @@ function(input_game_id) {
         stats_parser = function(function_ids,
                                 var) {
                 foreach(i = 1:length(function_ids), 
+                        .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
                         
                         getNodeSet(parsed, "//ratings")[[i]][paste(var)] %>%
@@ -136,6 +139,7 @@ function(input_game_id) {
         
         # get stats
         game_stats = foreach(h=1:length(stats),
+                             .errorhandling = 'remove',
                              .combine = bind_rows) %do% {
                 stats_parser(function_ids = returned_game_ids,
                              var = stats[h])
@@ -166,6 +170,7 @@ function(input_game_id) {
         # for parsing the poll
         poll_parser = function(function_ids) {
                 foreach(i = 1:length(function_ids), 
+                        .errorhandling = 'remove',
                         .combine = bind_rows) %do% {
                                 
                                 poll = getNodeSet(parsed, "//item")[[i]]['poll'][[1]] # getting first element from the poll
