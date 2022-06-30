@@ -50,7 +50,7 @@ batches_returned = foreach(b = 1:length(batches),
         out = get_bgg_api_data(batches[[b]])
         
         # pause to avoid taxing the API
-        Sys.sleep(15)
+        Sys.sleep(18)
         
         # print
       #  print(paste("batch", b, "of", length(batches), "complete"))
@@ -71,7 +71,6 @@ check_ids = map(batches_returned, "game_features") %>%
 # any games in this?
 all_game_ids$game_id[!(all_game_ids$game_id %in% check_ids$game_id)]
         
-
 # check the lengths of each batch
 check = data.frame(length = lengths(batches_returned),
            batch = seq(batches_returned))
@@ -84,36 +83,36 @@ problems = check %>%
 # check length
 length(problems) < 1
 
-# # # rerun problem batches
-# batches_problems = foreach(b = 1:length(problems),
-#                            .errorhandling = 'pass') %do% {
-# 
-#                                    # push batch
-#                                    out = get_bgg_api_data(batches[[problems[b]]])
-# 
-#                                    # pause to avoid taxing the API
-#                                    Sys.sleep(20)
-# 
-#                                    # print
-#                                    #  print(paste("batch", b, "of", length(batches), "complete"))
-#                                    cat(paste("batch", b, "of", length(problems), "complete"), sep="\n")
-# 
-#                                    # return
-#                                    out
-# 
-#                            }
-# 
-# 
-# # combine to ensure we have data for every batch
-# batches_all = c(batches_returned,
-#                 batches_problems)
-# # 
-# # fix
-# for (i in 1:length(problems)) {
-#         batches_returned[[problems[i]]] = batches_problems[[i]]
-# }
-# # 
-# #batches_returned[[problems]] = batches_problems[[1]]
+# # rerun problem batches
+batches_problems = foreach(b = 1:length(problems),
+                           .errorhandling = 'pass') %do% {
+
+                                   # push batch
+                                   out = get_bgg_api_data(batches[[problems[b]]])
+
+                                   # pause to avoid taxing the API
+                                   Sys.sleep(20)
+
+                                   # print
+                                   #  print(paste("batch", b, "of", length(batches), "complete"))
+                                   cat(paste("batch", b, "of", length(problems), "complete"), sep="\n")
+
+                                   # return
+                                   out
+
+                           }
+
+
+# combine to ensure we have data for every batch
+batches_all = c(batches_returned,
+                batches_problems)
+#
+# fix
+for (i in 1:length(problems)) {
+        batches_returned[[problems[i]]] = batches_problems[[i]]
+}
+
+#batches_returned[[problems]] = batches_problems[[1]]
 # # check again
 # check_again = data.frame(length = lengths(batches_returned),
 #                    batch = seq(batches_returned)) %>%
