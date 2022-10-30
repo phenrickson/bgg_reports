@@ -15,8 +15,8 @@ require(assertthat)
 source(here("functions", "connect_to_gcp.R"))
 
 # functions for submitting a game id to bgg api
-# submit game ids to 'get_game_data' function
-source(here("functions", "request_games_from_bgg_api.R"))
+# submit game ids to 'get_bgg_game_data' function
+source(here("functions", "request_games_from_bgg_api_funcs.R"))
 
 # get bgg ids
 # get most recent time game id appeared
@@ -27,9 +27,19 @@ bgg_ids<-DBI::dbGetQuery(bigquerycon,
 # get vector of unique ids
 bgg_ids_vec = bgg_ids %>%
         select(game_id) %>%
-        head(500) %>%
+    #    head(500) %>%
         unique %>%
         pull
+
+# push through function
+bgg_games_xml_obj = get_bgg_game_data(bgg_ids_vec,
+                        tidy = F)
+
+# now tidy
+plan(multisession, workers = 4)
+system.time({
+        bgg_games_data = tidy_bgg_data_xml(bgg_games_xml_obj)
+        })
 
 # message number
 message(paste(length(bgg_ids_vec), "game(s) to submit to bgg api"))
@@ -51,10 +61,10 @@ resp_batches =
                 message(paste("submitting batch", b, "of", length(id_batches)))
                 
                 # submit batch to function
-                out = get_game_data(id_batches[[b]])
+                out = get_bgg_game_data(id_batches[[b]])
                 
-                # slight delay pause to avoid taxing the API
-                Sys.sleep(5)
+                # slight pause to avoid taxing the API
+                # Sys.sleep(1)
                 
                 # print
                 #  print(paste("batch", b, "of", length(batches), "complete"))
@@ -132,19 +142,12 @@ games_data =
         bind_rows(batches_data,
                   missing_batches_data)
 
+message(paste("saving batches to", here("data", "api")))
+
 # save
+save(games_data,
+     file = here("data", "api", paste("batches_", Sys.Date(), ".Rdata", sep=""))
+     )
 
-
-
-
-# get unique ids vector
-ids = bgg_ids %>%
-        select(game_id) %>%
-        head(250) %>%
-        sample_n(50) %>%
-        unique() %>%
-        pull()
-
-
-
-game_data = get_game_data(ids)
+# done
+message("get_games_from_api complete.")

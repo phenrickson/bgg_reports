@@ -100,7 +100,7 @@ results = [{'page': 1,
 for page in tqdm(range(2, tot_pages+1), desc='Scraping pages', total=tot_pages):
 
         # wait a few seconds
-        sleep(2)
+        sleep(1)
         
         # re-define url
         url = f"https://boardgamegeek.com/browse/boardgame/page/{page}?sort=rank"
@@ -134,7 +134,7 @@ print(f"\n>>> Missing pages: {set(np.unique([item['page'] for item in results]))
 for page in tqdm(missed_pages, desc='Scraping missed pages...', total=len(missed_pages)):
 
         # wait a few seconds
-        sleep(2)
+        sleep(1)
         
         # re-define url
         url = f"https://boardgamegeek.com/browse/boardgame/page/{page}?sort=rank"
@@ -164,7 +164,7 @@ print(f"\n>>> Saving scraped pages")
 driver.close()
 
 # define path to save file
-save_path = f"{os.getcwd()}/scraped/bgg_ids_{datetime.now().strftime('%Y-%m-%d')}.csv"
+save_path = f"{os.getcwd()}/data/scraped/bgg_ids_{datetime.now().strftime('%Y-%m-%d')}.csv"
 
 # save data
 pd.DataFrame(results).to_csv(save_path, index=False)

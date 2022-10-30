@@ -33,11 +33,10 @@ bigquerycon<-dbConnect(
         dataset = "bgg"
 )
 
-# mes
-
 ### get scraped file
 # get files of scraped bgg ids
-bgg_id_files = list.files(here("scraped"))
+bgg_ids_folder = here("data", "scraped")
+bgg_id_files = list.files(bgg_ids_folder)
 
 # get most recent ids file
 most_recent_ids_file = 
@@ -60,14 +59,14 @@ most_recent_ids_file =
         pull(file)
 
 # make sure this file exists
-message(paste("assert that", most_recent_ids_file, "in folder"))
+message(paste("looking for", most_recent_ids_file, "in", bgg_ids_folder))
 assert_that(most_recent_ids_file %in% bgg_id_files, msg = "bgg ids file not in folder")
 
 # print the file
 message(paste("loading", most_recent_ids_file))
 
 # read in file
-bgg_ids = fread(here("scraped", most_recent_ids_file)) %>%
+bgg_ids = fread(here(bgg_ids_folder, most_recent_ids_file)) %>%
         as_tibble %>%
         # arrange by page count
         arrange(page) %>%
@@ -103,3 +102,5 @@ dbWriteTable(bigquerycon,
              value = bgg_ids)
 
 message("done.")
+
+rm(list=ls())

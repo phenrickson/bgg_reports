@@ -14,7 +14,7 @@ library(rvest)
 # currently takes about an hour and 10 minutes
 all_bgg_ids_raw = get_all_bgg_ids(
         minpages = 1,
-        maxpages = 1374)
+        maxpages = 1)
 
 # check length
 
@@ -37,6 +37,8 @@ all_game_ids_tidied = all_bgg_ids_raw %>%
 # save locally
 readr::write_rds(all_game_ids_tidied,
                  file = here::here("data", "all_game_ids_tidied.Rdata"))
+
+load(here::here("data", "all_game_ids_tidied.Rdata"))
 
 # now push this to GCP
 # connect to sql
