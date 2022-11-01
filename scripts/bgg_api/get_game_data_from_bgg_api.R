@@ -1,6 +1,7 @@
 # packages
 require(tidyverse)
 require(data.table)
+require(foreach)
 require(httr2)
 require(xml2)
 require(XML)
@@ -10,13 +11,15 @@ require(here)
 require(polite)
 require(magrittr)
 require(assertthat)
+require(furrr)
+require(future)
 
 # functions for connecting to gcp
 source(here("functions", "connect_to_gcp.R"))
 
 # functions for submitting a game id to bgg api
 # submit game ids to 'get_bgg_game_data' function
-source(here("functions", "request_games_from_bgg_api_funcs.R"))
+source(here("scripts","bgg_api", "bgg_api_functions.R"))
 
 # get bgg ids
 # get most recent time game id appeared
@@ -27,16 +30,16 @@ bgg_ids<-DBI::dbGetQuery(bigquerycon,
 # get vector of unique ids
 bgg_ids_vec = bgg_ids %>%
         select(game_id) %>%
-    #    head(500) %>%
         unique %>%
         pull
 
 # push through function
-bgg_games_xml_obj = get_bgg_game_data(bgg_ids_vec,
+bgg_games_xml_obj = get_bgg_games_data(bgg_ids_vec,
                         tidy = F)
 
 # now tidy
-plan(multisession, workers = 4)
+# plan(multisession, workers = 4)
+
 system.time({
         bgg_games_data = tidy_bgg_data_xml(bgg_games_xml_obj)
         })
