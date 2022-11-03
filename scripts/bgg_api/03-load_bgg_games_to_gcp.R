@@ -15,6 +15,7 @@ library(assertthat)
 library(tictoc)
 library(future)
 library(jsonlite)
+library(RcppSimdJson)
 
 # gcp
 library(odbc)
@@ -76,7 +77,7 @@ message(paste("loading", most_recent_json_file))
 load(here(bgg_json_folder, most_recent_json_file))
 
 # get data from json to tibble
-bgg_games_data = fromJSON(bgg_games_json$bgg_games_data) %>%
+bgg_games_data = fparse(bgg_games_json$bgg_games_data) %>%
         as_tibble
 
 ### get modeled tables to match gcp tables
@@ -146,7 +147,6 @@ game_expansions = game_links %>%
                   expansion_name = value,
                   load_ts = Sys.time())
 
-
 # descriptions
 game_descriptions = 
         bgg_games_data %>%
@@ -169,6 +169,7 @@ game_images =
         filter(!is.na(image)) %>%
         transmute(game_id,
                   image,
+                  thumbnail,
                   load_ts = Sys.time())
 
 # player counts
@@ -305,6 +306,9 @@ dbWriteTable(bigquerycon,
              value = game_descriptions)
 
 message("all tables loaded to GCP.")
+
+gc()
+rm(list = ls())
 # tidying bgg xml using function
 #tic("tidying bgg games xml")
 #plan(multisession, workers = 4)

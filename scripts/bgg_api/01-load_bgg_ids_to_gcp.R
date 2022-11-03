@@ -63,7 +63,7 @@ message(paste("looking for", most_recent_ids_file, "in", bgg_ids_folder))
 assert_that(most_recent_ids_file %in% bgg_id_files, msg = "bgg ids file not in folder")
 
 # print the file
-message(paste("loading", most_recent_ids_file))
+#message(paste("loading", most_recent_ids_file))
 
 # read in file
 bgg_ids = fread(here(bgg_ids_folder, most_recent_ids_file)) %>%
@@ -82,7 +82,7 @@ bgg_ids = fread(here(bgg_ids_folder, most_recent_ids_file)) %>%
 message(paste(nrow(bgg_ids), "records in", most_recent_ids_file))
 
 ### load to gcp
-message(paste("loading", most_recent_ids_file, "to gcp"))
+#message(paste("loading", most_recent_ids_file, "to gcp"))
 
 # find associated bq table
 bq_table<-as_bq_table(list(project_id = PROJECT_ID,
@@ -90,7 +90,7 @@ bq_table<-as_bq_table(list(project_id = PROJECT_ID,
                            table_id = "scraped_bgg_ids"))
 
 # confirm bq table exists
-message("assert that bq table exists")
+#message("assert that bq table exists")
 assert_that(bq_table_exists(bq_table)==T,
             msg = "bq table does not exist")
 
