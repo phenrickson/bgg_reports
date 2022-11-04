@@ -58,11 +58,11 @@ source(here::here("functions/complexity_col_func.R"))
 library(flextable)
 set_flextable_defaults(theme_fun = theme_alafoli,
                        font.color = "grey10",
-  padding.bottom = 6, 
-  padding.top = 6,
-  padding.left = 6,
-  padding.right = 6,
-  background.color = "white")
+                       padding.bottom = 6, 
+                       padding.top = 6,
+                       padding.left = 6,
+                       padding.right = 6,
+                       background.color = "white")
 
 ```
 
@@ -88,13 +88,12 @@ bigquerycon<-dbConnect(
 # query table of game info to most recent load
 active_games<-DBI::dbGetQuery(bigquerycon, 
                               'SELECT * FROM bgg.api_game_info
-                              where timestamp = (SELECT MAX(timestamp) as most_recent FROM bgg.api_game_info)') %>%
-        select(-starts_with("rank")) %>%
+                              where load_ts = (SELECT MAX(load_ts) as most_recent FROM bgg.api_game_info)') %>%
         mutate(numweights = as.numeric(numweights)) %>%
+        mutate_if(is.integer, as.numeric) %>%
         mutate_at(c("averageweight",
                     "playingtime",
                     "minplaytime",
-                    "maxplaytime",
                     "yearpublished"),
                   ~ case_when(. == 0 ~ NA_real_,
                               TRUE ~ .))
@@ -103,7 +102,7 @@ active_games<-DBI::dbGetQuery(bigquerycon,
 
 # long table with game type variables
 game_types= DBI::dbGetQuery(bigquerycon, 
-                              'SELECT * FROM bgg.api_game_categories')
+                            'SELECT * FROM bgg.api_game_links')
 
 
 ```
@@ -129,44 +128,54 @@ bgg_today = get_bgg_data_from_github(Sys.Date())
 
 # laod in categorical feature selection we've made use of previously
 categorical_features_selected = readr::read_rds(here::here("data",
-                                                            "categorical_features_selected.Rdata"))
+                                                           "categorical_features_selected.Rdata"))
 
 # now join
 games_model = active_games %>%
         left_join(.,
                   game_types %>%
-        left_join(., categorical_features_selected %>%
-                          select(type, id, value, tidied, selected),
-                  by = c("type", "id", "value")) %>%
-        filter(selected == 'yes') %>%
-        select(game_id, type, value) %>%
-        mutate(type_abbrev = substr(type, 1, 3)) %>%
-        mutate(value = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
-        mutate(type = paste(type, value, sep="_")) %>%
-        mutate(has_type = 1) %>%
-        select(-value) %>%
-        pivot_wider(names_from = c("type"),
-                            values_from = c("has_type"),
-                            id_cols = c("game_id"),
-                            names_sep = "_",
-                            values_fn = min,
-                            values_fill = 0),
+                          mutate(value = case_when(value == "Players: Wargames with Rules Supporting Only Two Players" ~ "Players: Two Players Only Wargames",
+                                                   TRUE ~ value)) %>%
+                          left_join(., categorical_features_selected %>%
+                                            select(type, id, value, tidied, selected),
+                                    by = c("type", "id", "value")) %>%
+                          filter(selected == 'yes') %>%
+                          select(game_id, type, value) %>%
+                          mutate(type_abbrev = substr(type, 1, 3)) %>%
+                          mutate(value = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+                          mutate(value = case_when(value == 'family_players_wargames_with_rules_supporting_only_two_players' ~
+                                                           'family_players_two_players_only_wargames',
+                                                   TRUE ~ value)) %>%
+                          mutate(type = paste(type, value, sep="_")) %>%
+                          mutate(has_type = 1) %>%
+                          select(-value) %>%
+                          pivot_wider(names_from = c("type"),
+                                      values_from = c("has_type"),
+                                      id_cols = c("game_id"),
+                                      names_sep = "_",
+                                      values_fn = min,
+                                      values_fill = 0),
                   by = "game_id") %>%
+        mutate(number_mechanics = rowSums(across(starts_with("mechanic_")))) %>% 
+        filter(number_mechanics < 25) %>%
+        select(-number_mechanics) %>%
         rename(numowned = owned)
 
+# games number mechanics
+
 # discard what you dont need, said aaron downey!
-rm(game_types)
+#rm(game_types)
 
 # get most recent date
-most_recent_date = as.Date(games_model$timestamp[1])
+most_recent_date = max(as.Date(active_games$load_ts))
 
-my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
-                        paste("Data and analysis at phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
+my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", most_recent_date),
+                                       paste("Data and analysis at phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
 
 ```
 
 
-```{r games to predict}
+```{r games to predict, include=F}
 
 # get list of games to predict
 games_upcoming = games_model %>%
@@ -175,10 +184,12 @@ games_upcoming = games_model %>%
         mutate(dataset = 'upcoming') %>%
         mutate(log_usersrated = log1p(usersrated)) %>%
         filter(!is.na(yearpublished)) %>%
-        filter(usersrated > 5) 
-  #      filter(bayesaverage > 0)
+        filter(usersrated > 5) %>%
+        rename(timestamp = load_ts)
+#      filter(bayesaverage > 0)
 
 games_template = bgg_outcomes_recipe$template
+#names(games_template)[!(names(games_template) %in% names(games_upcoming))]
 
 ```
 
@@ -189,7 +200,7 @@ games_template = bgg_outcomes_recipe$template
 upcoming_estimated_averageweight = bgg_outcomes_final_workflows %>%
         as_tibble() %>%
         filter(outcome == 'averageweight') %>%
-        filter(grepl("xgbTree", wflow_id)) %>%
+        filter(grepl("stan", wflow_id)) %>%
         mutate(preds = map(.workflow,
                            ~ .x %>%
                                    predict(new_data = games_upcoming) %>%
@@ -207,6 +218,7 @@ games_upcoming_estimated = upcoming_estimated_averageweight %>%
 
 # predicting the upcoming set
 preds_upcoming = bgg_outcomes_final_workflows %>%
+        filter(!grepl("xgbTree", wflow_id)) %>%
         mutate(preds = map(.workflow,
                            ~ .x %>%
                                    predict(new_data = games_upcoming_estimated) %>%
@@ -222,16 +234,17 @@ preds_upcoming_tidied = preds_upcoming %>%
                                  TRUE ~ .pred)) %>%
         pivot_wider(names_from = c("outcome", "wflow_id"),
                     values_from = ".pred") %>%
-        mutate(bayesaverage_indirect_xgbTree = (
-                ((1800*5.5) + (usersrated_xgbTree*average_xgbTree)) /
-                        (1800 + usersrated_xgbTree))
-               ) %>%
+        # mutate(bayesaverage_indirect_xgbTree = (
+        #         ((1800*5.5) + (usersrated_xgbTree*average_xgbTree)) /
+        #                 (1800 + usersrated_xgbTree))
+        #        ) %>%
         mutate(bayesaverage_indirect_stan = (
                 ((1800*5.5) + (usersrated_stan*average_stan)) /
                         (1800 + usersrated_stan))
-               ) %>%
+        ) %>%
         mutate_if(is.numeric, round, 2) %>%
-        arrange(desc(bayesaverage_indirect_xgbTree))
+        arrange(desc(bayesaverage_indirect_stan))
+# arrange(desc(bayesaverage_indirect_xgbTree))
 
 # save this to a location
 readr::write_rds(preds_upcoming_tidied,
@@ -256,89 +269,89 @@ make_heat_table_func = function(input_preds_table,
                                 sort_by,
                                 n) {
         
-   #      preds_upcoming_tidied %>%
-   #      gather("wflow", "pred",
-   #             -game_id, -name, -yearpublished) %>%
-   # #     filter(grepl("bayesaverage", wflow)) %>%
-   #      spread(wflow, pred) %>%
-   #      left_join(., games_upcoming %>%
-   #                        select(game_id,
-   #                               name,
-   #                               bayesaverage),
-   #                by = c("game_id", "name")) %>%
-   #  #    filter(bayesaverage > 0) %>%
-   #      select(game_id, name, yearpublished, contains("xgbTree")) %>%
+        #      preds_upcoming_tidied %>%
+        #      gather("wflow", "pred",
+        #             -game_id, -name, -yearpublished) %>%
+        # #     filter(grepl("bayesaverage", wflow)) %>%
+        #      spread(wflow, pred) %>%
+        #      left_join(., games_upcoming %>%
+        #                        select(game_id,
+        #                               name,
+        #                               bayesaverage),
+        #                by = c("game_id", "name")) %>%
+        #  #    filter(bayesaverage > 0) %>%
+        #      select(game_id, name, yearpublished, contains("xgbTree")) %>%
         input_preds_table %>%
-        rename(ID = game_id,
-               Name = name,
-               Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
-        arrange(desc(!!enquo(sort_by))) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-   #     arrange(desc(GeekRating)) %>%
-        mutate(Rank = row_number()) %>%
-        mutate_if(is.numeric, round, 2) %>%
-        select(Rank, everything()) %>%
+                rename(ID = game_id,
+                       Name = name,
+                       Published = yearpublished,
+                       UserRatings = usersrated_stan,
+                       Weight = averageweight_stan,
+                       Average = average_stan,
+                       GeekRating = bayesaverage_indirect_stan) %>%
+                arrange(desc(!!enquo(sort_by))) %>%
+                mutate_if(is.numeric, round, 2) %>%
+                select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
+                #     arrange(desc(GeekRating)) %>%
+                mutate(Rank = row_number()) %>%
+                mutate_if(is.numeric, round, 2) %>%
+                select(Rank, everything()) %>%
                 mutate(UserRatings = as.integer(UserRatings)) %>%
-        mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
-        mutate(Report = paste("https://phenrickson.github.io/bgg_reports/game_report_cards/", ID, ".html", sep="")) %>%
-        mutate_at(c("ID",
-                       "Published"),
-                  ~ as.character(.)) %>%
-        head(n) %>%
-        flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
-        bg(j = "GeekRating",
-           bg = bayesaverage_col_func) %>%
-        bg(j="Average",
-          bg = average_col_func) %>%
-        bg(j = "Weight",
-           bg = complexity_col_func) %>%     
-        bg(j = "UserRatings",
-           bg = usersrated_col_func) %>%   
-        bold(j = c("UserRatings",
-                   "Average",
-                   "GeekRating",
-                   "Weight"),
-             part = "header") %>%
-        flextable::align(j = c("UserRatings",
-                               "Average",
-                               "GeekRating",
-                               "Weight"),
-                         align = "center",
-                         part = "all") %>%
-        add_header_row(values = 
-                               c("",
-                                 "",
-                                 "",
-                                 "",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated",
-                                 "Estimated")) %>%
-        merge_h(part = "header") %>%
-        # hline(j = c("UsersRated",
-        #                          "Average",
-        #                          "GeekRating",
-        #                          "Complexity"), 
-        #       part = "header") %>%
-        autofit() %>%
-        compose(j= 3,
-                value = as_paragraph(
-                        hyperlink_text(x = ID,
-                                       url = Link)
-                )) %>%
-        compose(j= 4,
-                value = as_paragraph(
-                        hyperlink_text(x = Name,
-                                       url = Link)
-                )) %>%
-        flextable::color(j = c("Name",
-                               "ID"),
-                         color ="skyblue4")
+                mutate(Link = paste("https://boardgamegeek.com/boardgame/", ID, sep="")) %>%
+                mutate(Report = paste("https://phenrickson.github.io/bgg_reports/game_report_cards/", ID, ".html", sep="")) %>%
+                mutate_at(c("ID",
+                            "Published"),
+                          ~ as.character(.)) %>%
+                head(n) %>%
+                flextable(col_keys = c("Rank", "Published", "ID", "Name", "UserRatings", "Weight", "Average", "GeekRating")) %>%
+                bg(j = "GeekRating",
+                   bg = bayesaverage_col_func) %>%
+                bg(j="Average",
+                   bg = average_col_func) %>%
+                bg(j = "Weight",
+                   bg = complexity_col_func) %>%     
+                bg(j = "UserRatings",
+                   bg = usersrated_col_func) %>%   
+                bold(j = c("UserRatings",
+                           "Average",
+                           "GeekRating",
+                           "Weight"),
+                     part = "header") %>%
+                flextable::align(j = c("UserRatings",
+                                       "Average",
+                                       "GeekRating",
+                                       "Weight"),
+                                 align = "center",
+                                 part = "all") %>%
+                add_header_row(values = 
+                                       c("",
+                                         "",
+                                         "",
+                                         "",
+                                         "Estimated",
+                                         "Estimated",
+                                         "Estimated",
+                                         "Estimated")) %>%
+                merge_h(part = "header") %>%
+                # hline(j = c("UsersRated",
+                #                          "Average",
+                #                          "GeekRating",
+                #                          "Complexity"), 
+                #       part = "header") %>%
+                autofit() %>%
+                compose(j= 3,
+                        value = as_paragraph(
+                                hyperlink_text(x = ID,
+                                               url = Link)
+                        )) %>%
+                compose(j= 4,
+                        value = as_paragraph(
+                                hyperlink_text(x = Name,
+                                               url = Link)
+                        )) %>%
+                flextable::color(j = c("Name",
+                                       "ID"),
+                                 color ="skyblue4")
         #%>%
         # compose(j= 5,
         #         value = as_paragraph(
@@ -369,29 +382,29 @@ make_heat_table_func = function(input_preds_table,
 ```{r tidy up predictions}
 
 preds_table = preds_upcoming_tidied %>%
-                gather("wflow", "pred",
-                       -game_id, -name, -yearpublished) %>%
-           #     filter(grepl("bayesaverage", wflow)) %>%
-                spread(wflow, pred) %>%
-                left_join(., games_upcoming %>%
-                                  select(game_id,
-                                         name,
-                                         bayesaverage),
-                          by = c("game_id", "name")) %>%
-            #    filter(bayesaverage > 0) %>%
-                select(game_id, name, yearpublished, contains("xgbTree")) %>%
-        arrange(desc(bayesaverage_xgbTree)) %>%
+        gather("wflow", "pred",
+               -game_id, -name, -yearpublished) %>%
+        #     filter(grepl("bayesaverage", wflow)) %>%
+        spread(wflow, pred) %>%
+        left_join(., games_upcoming %>%
+                          select(game_id,
+                                 name,
+                                 bayesaverage),
+                  by = c("game_id", "name")) %>%
+        #    filter(bayesaverage > 0) %>%
+        select(game_id, name, yearpublished, contains("stan")) %>%
+        arrange(desc(bayesaverage_stan)) %>%
         rename(ID = game_id,
                Name = name,
                Published = yearpublished,
-               UserRatings = usersrated_xgbTree,
-               Weight = averageweight_xgbTree,
-               Average = average_xgbTree,
-               GeekRating = bayesaverage_indirect_xgbTree) %>%
+               UserRatings = usersrated_stan,
+               Weight = averageweight_stan,
+               Average = average_stan,
+               GeekRating = bayesaverage_indirect_stan) %>%
         arrange(desc(GeekRating)) %>%
-#        arrange(desc(!!enquo(sort_by))) %>%
+        #        arrange(desc(!!enquo(sort_by))) %>%
         select(Published, ID, Name, UserRatings, Weight, Average, GeekRating) %>%
-   #     arrange(desc(GeekRating)) %>%
+        #     arrange(desc(GeekRating)) %>%
         mutate(Rank = row_number()) %>%
         mutate_if(is.numeric, round, 2) %>%
         select(Rank, everything()) %>%
@@ -413,40 +426,40 @@ breaks_df = data.frame(outcome = 'GeekRating',
         bind_rows(.,
                   data.frame(outcome = 'Average',
                              breaks = quantile(active_games %>% 
-                                                 filter(average != 0) %>%
-                                                 pull(average), 
-                                         probs = seq(.75, .97, .01), na.rm=T) %>%
+                                                       filter(average != 0) %>%
+                                                       pull(average), 
+                                               probs = seq(.75, .97, .01), na.rm=T) %>%
                                      as.vector)) %>%
         bind_rows(.,
                   data.frame(outcome = 'UserRatings',
                              breaks = c(0,
-                                                   100,
-                                                   200,
-                                                   500,
-                                                   1000,
-                                                   1500,
-                                                   2000,
-                                                   3000,
-                                                   5000,
-                                                   7500,
-                                                   10000,
-                                                   25000,
-                                                   50000))) %>%
+                                        100,
+                                        200,
+                                        500,
+                                        1000,
+                                        1500,
+                                        2000,
+                                        3000,
+                                        5000,
+                                        7500,
+                                        10000,
+                                        25000,
+                                        50000))) %>%
         bind_rows(.,
-                   data.frame(outcome = 'Weight',
-                              breaks = quantile(active_games %>%
-                                                        filter(usersrated != 0) %>%
-                                                        pull(averageweight) , probs = seq(0, 1, .01), na.rm=T) %>%
-                                      as.vector))
-                  
-                  
+                  data.frame(outcome = 'Weight',
+                             breaks = quantile(active_games %>%
+                                                       filter(usersrated != 0) %>%
+                                                       pull(averageweight) , probs = seq(0, 1, .01), na.rm=T) %>%
+                                     as.vector))
+
+
 
 # make breaks
 #breaks<-quantile(seq(.01, .99, .01), probs = seq(.01, .99, .05))
 
 #  breaks = weight_deciles
 blueColorRamp = colorRampPalette(c("white", "deepskyblue1"))
-blueRedColorRamp = colorRampPalette(c("deepskyblue1", "white", "red"))
+blueRedColorRamp = colorRampPalette(c("dodgerblue", "white", "orange"))
 
 ```
 
@@ -469,41 +482,46 @@ preds_table %>%
         datatable(escape=F,
                   filter = 'top',
                   options = list(pageLength = 25,
+                                 editable =T,
+                                 initComplete = htmlwidgets::JS(
+                                         "function(settings, json) {",
+                                         paste0("$(this.api().table().container()).css({'font-size': '", '8pt', "'});"),
+                                         "}"),
                                  scrollX=F,
                                  autowidth=T,
                                  columnDefs = list(list(className = 'dt-center', targets = which(names(preds_table)!='Name')-1))),
-                             #    columnDefs=list(list(width = '30px', targets = c(which(names(prob_table)!='Name')-1)))),
-                                                # list(width = '400px', targets = c(which(names(prob_table)=='Name')-1)))),
-                                       #  targets = seq(3, ncol(prob_table)-1))),
+                  #    columnDefs=list(list(width = '30px', targets = c(which(names(prob_table)!='Name')-1)))),
+                  # list(width = '400px', targets = c(which(names(prob_table)=='Name')-1)))),
+                  #  targets = seq(3, ncol(prob_table)-1))),
                   rownames = F) %>%
         formatStyle("GeekRating", backgroundColor = styleInterval(breaks_df %>%
                                                                           filter(outcome == 'GeekRating') %>%
                                                                           pull(breaks),
                                                                   blueColorRamp(breaks_df %>%
-                                                                          filter(outcome == 'GeekRating') %>%
-                                                                          pull(breaks) %>%
-                                                                                  length()+1))) %>%
+                                                                                        filter(outcome == 'GeekRating') %>%
+                                                                                        pull(breaks) %>%
+                                                                                        length()+1))) %>%
         formatStyle("Average", backgroundColor = styleInterval(breaks_df %>%
-                                                                          filter(outcome == 'Average') %>%
-                                                                          pull(breaks),
-                                                                  blueColorRamp(breaks_df %>%
-                                                                          filter(outcome == 'Average') %>%
-                                                                          pull(breaks) %>%
-                                                                                  length()+1))) %>%
+                                                                       filter(outcome == 'Average') %>%
+                                                                       pull(breaks),
+                                                               blueColorRamp(breaks_df %>%
+                                                                                     filter(outcome == 'Average') %>%
+                                                                                     pull(breaks) %>%
+                                                                                     length()+1))) %>%
         formatStyle("Weight", backgroundColor = styleInterval(breaks_df %>%
-                                                                          filter(outcome == 'Weight') %>%
-                                                                          pull(breaks),
-                                                                  blueRedColorRamp(breaks_df %>%
-                                                                          filter(outcome == 'Weight') %>%
-                                                                          pull(breaks) %>%
-                                                                                  length()+1))) %>%
+                                                                      filter(outcome == 'Weight') %>%
+                                                                      pull(breaks),
+                                                              blueRedColorRamp(breaks_df %>%
+                                                                                       filter(outcome == 'Weight') %>%
+                                                                                       pull(breaks) %>%
+                                                                                       length()+1))) %>%
         formatStyle("UserRatings", backgroundColor = styleInterval(breaks_df %>%
-                                                                          filter(outcome == 'UserRatings') %>%
-                                                                          pull(breaks),
-                                                                  blueColorRamp(breaks_df %>%
-                                                                          filter(outcome == 'UserRatings') %>%
-                                                                          pull(breaks) %>%
-                                                                                  length()+1))) 
+                                                                           filter(outcome == 'UserRatings') %>%
+                                                                           pull(breaks),
+                                                                   blueColorRamp(breaks_df %>%
+                                                                                         filter(outcome == 'UserRatings') %>%
+                                                                                         pull(breaks) %>%
+                                                                                         length()+1))) 
 
 ```
 
@@ -521,20 +539,20 @@ make_heat_table_func(
         preds_upcoming_tidied %>%
                 gather("wflow", "pred",
                        -game_id, -name, -yearpublished) %>%
-           #     filter(grepl("bayesaverage", wflow)) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
                 spread(wflow, pred) %>%
                 left_join(., games_upcoming %>%
                                   select(game_id,
                                          name,
                                          bayesaverage),
                           by = c("game_id", "name")) %>%
-            #    filter(bayesaverage > 0) %>%
+                #    filter(bayesaverage > 0) %>%
                 select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         100
-   )
+)
 
- 
+
 ```
 
 ## Highest Expected Average Rating 
@@ -545,18 +563,18 @@ make_heat_table_func(
         preds_upcoming_tidied %>%
                 gather("wflow", "pred",
                        -game_id, -name, -yearpublished) %>%
-           #     filter(grepl("bayesaverage", wflow)) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
                 spread(wflow, pred) %>%
                 left_join(., games_upcoming %>%
                                   select(game_id,
                                          name,
                                          bayesaverage),
                           by = c("game_id", "name")) %>%
-            #    filter(bayesaverage > 0) %>%
+                #    filter(bayesaverage > 0) %>%
                 select(game_id, name, yearpublished, contains("xgbTree")),
         Average,
         100
-   )
+)
 
 ```
 
@@ -568,18 +586,18 @@ make_heat_table_func(
         preds_upcoming_tidied %>%
                 gather("wflow", "pred",
                        -game_id, -name, -yearpublished) %>%
-           #     filter(grepl("bayesaverage", wflow)) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
                 spread(wflow, pred) %>%
                 left_join(., games_upcoming %>%
                                   select(game_id,
                                          name,
                                          bayesaverage),
                           by = c("game_id", "name")) %>%
-            #    filter(bayesaverage > 0) %>%
+                #    filter(bayesaverage > 0) %>%
                 select(game_id, name, yearpublished, contains("xgbTree")),
         UserRatings,
         100
-   )
+)
 
 
 ```
@@ -592,18 +610,18 @@ make_heat_table_func(
         preds_upcoming_tidied %>%
                 gather("wflow", "pred",
                        -game_id, -name, -yearpublished) %>%
-           #     filter(grepl("bayesaverage", wflow)) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
                 spread(wflow, pred) %>%
                 left_join(., games_upcoming %>%
                                   select(game_id,
                                          name,
                                          bayesaverage),
                           by = c("game_id", "name")) %>%
-            #    filter(bayesaverage > 0) %>%
+                #    filter(bayesaverage > 0) %>%
                 select(game_id, name, yearpublished, contains("xgbTree")),
         Weight,
         100
-   )
+)
 
 ```
 
@@ -616,26 +634,26 @@ In this section, I show the model's top 50 games by expected Geek Rating for ind
 ```{r show by year 2021}
 
 make_heat_table_func(
-
+        
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(yearpublished == 2021) %>%
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(yearpublished == 2021) %>%
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         100
-   )
+)
 
 ```
 
@@ -644,26 +662,26 @@ make_heat_table_func(
 ```{r show by year 2022}
 
 make_heat_table_func(
-
+        
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(yearpublished == 2022) %>%
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(yearpublished == 2022) %>%
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         100
-   )
+)
 
 
 ```
@@ -674,26 +692,26 @@ make_heat_table_func(
 
 # boosted trees
 make_heat_table_func(
-
+        
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(yearpublished == 2023) %>%
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(yearpublished == 2023) %>%
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         100
-   )
+)
 
 ```
 
@@ -707,24 +725,24 @@ In this section, I show games sorted by their expected Geek Rating (a combinatio
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(category_fantasy==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(category_fantasy==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 ```
 
@@ -734,24 +752,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(category_economic==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(category_economic==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 
 ```
@@ -763,24 +781,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(category_wargame==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(category_wargame==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 
 
@@ -792,24 +810,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(category_science_fiction==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(category_science_fiction==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 ```
 
@@ -819,24 +837,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(family_mechanism_rollandwrite==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(family_mechanism_rollandwrite==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 
 
@@ -848,24 +866,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(category_abstract_strategy==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(category_abstract_strategy==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 
 ```
@@ -877,24 +895,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(category_party_game==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(category_party_game==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 ```
 
@@ -904,24 +922,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(category_card_game==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(category_card_game==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 
 
@@ -933,24 +951,24 @@ make_heat_table_func(
 
 make_heat_table_func(
         preds_upcoming_tidied %>%
-        gather("wflow", "pred",
-               -game_id, -name, -yearpublished) %>%
-   #     filter(grepl("bayesaverage", wflow)) %>%
-        spread(wflow, pred) %>%
-        left_join(., games_upcoming %>%
-                          select(game_id,
-                                 name,
-                                 bayesaverage),
-                  by = c("game_id", "name")) %>%
-        filter(game_id %in% 
-                       (games_upcoming %>%
-                                filter(family_players_two_player_only_games==1) %>% 
-                                pull(game_id))) %>%
-       # filter(bayesaverage > 0) %>%
-        select(game_id, name, yearpublished, contains("xgbTree")),
+                gather("wflow", "pred",
+                       -game_id, -name, -yearpublished) %>%
+                #     filter(grepl("bayesaverage", wflow)) %>%
+                spread(wflow, pred) %>%
+                left_join(., games_upcoming %>%
+                                  select(game_id,
+                                         name,
+                                         bayesaverage),
+                          by = c("game_id", "name")) %>%
+                filter(game_id %in% 
+                               (games_upcoming %>%
+                                        filter(family_players_two_player_only_games==1) %>% 
+                                        pull(game_id))) %>%
+                # filter(bayesaverage > 0) %>%
+                select(game_id, name, yearpublished, contains("xgbTree")),
         GeekRating,
         50
-   )
+)
 
 ```
 
