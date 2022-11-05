@@ -80,9 +80,9 @@ load(here(bgg_json_folder, most_recent_json_file))
 bgg_games_data = fparse(bgg_games_json$bgg_games_data) %>%
         as_tibble
 
-### get modeled tables to match gcp tables
+### get modeled tables to load to api
 
-message("prepping tables for GCP...")
+message("prepping api tables for GCP...")
 
 # links
 game_links = 
@@ -193,7 +193,7 @@ game_ranks =
         unnest(ranks) %>%
         filter(name %in% c("abstracts",
                            "boardgame", 
-                           "childresngames",
+                           "childrensgames",
                            "cgs",
                            "familygames",
                            "partygames",
@@ -246,6 +246,126 @@ game_info =
                   wishing,
                   load_ts = Sys.time()
         )
+
+## analysis layer
+# create a table containing most of the info i'll end up using for analysis here
+
+# game playercounts
+game_rec_playercounts = 
+        game_playercounts %>% 
+        mutate(value = tolower(gsub("\\s+", "", value))) %>%
+        filter(numvotes > 0) %>%
+        group_by(game_id) %>%
+        mutate(total_votes = sum(numvotes)) %>%
+        ungroup() %>%
+        group_by(game_id, numplayers) %>%
+        slice_max(numvotes, n=1, with_ties = F) %>% 
+        group_by(game_id) %>%
+        select(game_id, value, numplayers, total_votes, load_ts) %>% 
+        pivot_wider(values_from = c("numplayers"),
+                    names_from = c("value"), 
+                    id_cols = c("game_id", "total_votes", "load_ts"),
+                    names_prefix = c("playercount_"),
+                    values_fn = ~ paste(.x, collapse=",")) %>%
+        select(game_id, total_votes, playercount_best, playercount_recommended, playercount_notrecommended, load_ts) %>%
+        ungroup() %>%
+        transmute(game_id,
+                  playercount_votes = total_votes,
+                  playercount_best,
+                  playercount_rec = playercount_recommended,
+                  playercount_notrec = playercount_notrecommended,
+                  load_ts)
+
+# game ranks
+game_rank_types = 
+        game_ranks %>%
+        select(game_id, rank_type, rank, load_ts) %>%
+        pivot_wider(names_from = c("rank_type"),
+                    values_from = c("rank"),
+                    names_prefix = c("rank_"),
+                    id_cols = c("game_id", "load_ts")) %>%
+        transmute(game_id,
+                  rank_boardgame,
+                  rank_thematic,
+                  rank_strategy = rank_strategygames,
+                  rank_wargame = rank_wargames,
+                  rank_family = rank_familygames,
+                  rank_children = rank_childrensgames,
+                  rank_cgs,
+                  rank_abstract = rank_abstracts,
+                  rank_party = rank_partygames,
+                  load_ts)
+
+# combine
+analysis_games = 
+        game_info %>%
+        # get image
+        left_join(.,
+                  game_images %>%
+                          select(game_id,
+                                 image,
+                                 thumbnail),
+                  by = c("game_id")) %>%
+        # get playercounts
+        left_join(.,
+                  game_rec_playercounts %>%
+                          select(game_id,
+                                 playercount_votes,
+                                 playercount_best,
+                                 playercount_rec,
+                                 playercount_notrec),
+                  by = c("game_id")) %>%
+        # get ranks
+        left_join(.,
+                  game_rank_types %>%
+                          select(game_id,
+                                 rank_boardgame,
+                                 rank_thematic,
+                                 rank_strategy,
+                                 rank_wargame,
+                                 rank_family,
+                                 rank_children,
+                                 rank_cgs,
+                                 rank_abstract,
+                                 rank_party),
+                  by = c("game_id")) %>%
+        transmute(
+                game_id,
+                name,
+                yearpublished,
+                image, 
+                thumbnail,
+                averageweight,
+                average,
+                bayesaverage,
+                usersrated,
+                stddev,
+                minage,
+                minplayers,
+                maxplayers,
+                playingtime,
+                minplaytime,
+                maxplaytime,
+                numcomments,
+                numweights,
+                owned,
+                trading,
+                wanting,
+                wishing,
+                playercount_votes,
+                playercount_best,
+                playercount_rec,
+                playercount_notrec,
+                rank_boardgame,
+                rank_thematic,
+                rank_strategy,
+                rank_wargame,
+                rank_family,
+                rank_children,
+                rank_cgs,
+                rank_abstract,
+                rank_party,
+                load_ts)
 
 ### now load to GCP
 
@@ -304,6 +424,12 @@ dbWriteTable(bigquerycon,
              name = "api_game_descriptions",
              overwrite = T,
              value = game_descriptions)
+
+### analysis
+dbWriteTable(bigquerycon,
+             name = "analysis_games",
+             overwrite = T,
+             value = analysis_games)
 
 message("all tables loaded to GCP.")
 
