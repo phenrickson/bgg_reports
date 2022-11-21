@@ -25,7 +25,7 @@ source(here("scripts","bgg_api", "bgg_api_functions.R"))
 # get bgg ids
 # get most recent time game id appeared
 bgg_ids<-DBI::dbGetQuery(bigquerycon, 
-                         'SELECT game_id, raw_name, tidy_name, MAX(upload_ts) as most_recent_by_game FROM bgg.scraped_bgg_ids
+                         'SELECT game_id, raw_name, tidy_name, MAX(upload_ts) as most_recent_by_game, MIN(upload_ts) as first_entry_by_game FROM bgg.scraped_bgg_ids
                               GROUP BY game_id, raw_name, tidy_name')
 
 # get vector of unique ids

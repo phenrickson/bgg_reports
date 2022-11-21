@@ -16,6 +16,7 @@ require(progressr)
 require(future)
 require(furrr)
 require(jsonlite)
+require(RcppSimdJson)
 
 handlers("txtprogressbar") 
 
@@ -529,15 +530,15 @@ tidy_bgg_data_xml = function(input_bgg_games_xml_obj,
 
 # implement all in function
 get_bgg_games_data = function(input_game_ids,
-                              batch_size = 400,
-                              tidy = F,
+                              batch_size = 500,
+                              tidy = T,
                               toJSON = F) {
         
         # message number of games submitted
         message(paste(length(input_game_ids), "game(s) to submit to bgg api"))
         
         # if length of request is less than 400, then submit in one go
-        if (length(input_game_ids) < 400) {
+        if (length(input_game_ids) <500) {
                 
                 bgg_games_xml_obj = get_bgg_games_xml(input_game_ids)
                 
@@ -545,8 +546,8 @@ get_bgg_games_data = function(input_game_ids,
                 
                 message("splitting game ids into batches")
                 
-                if (batch_size > 400) {
-                        error("batch size must not exceed 400")
+                if (batch_size > 500) {
+                        error("batch size must not exceed 500")
                 }
                 
                 # convert ids to batches to submit to api
@@ -573,52 +574,84 @@ get_bgg_games_data = function(input_game_ids,
                                 out = get_bgg_games_xml(id_batches[[b]])
                                 
                                 # slight pause to avoid taxing the API
-                                Sys.sleep(5)
+                            #    Sys.sleep(2)
                                 
                                 # print
                                 #  print(paste("batch", b, "of", length(batches), "complete"))
                                 cat(message(paste("batch", b, "of", length(id_batches), "complete."), sep="\n"))
                                 
+                                # get to list
+                                bgg_games_xml_obj = list("input_game_ids" = out[['input_game_ids']],
+                                                         "returned_game_ids" = out[['returned_game_ids']],
+                                                         "missing_game_ids" = out[['missing_game_ids']],
+                                                         "bgg_games_xml" = out[['bgg_games_xml']])
+                                
+                                # if tidy, convert each batch to a data frame
+                                if(tidy == T) {
+                                        suppressMessages({
+                                                out = tidy_bgg_data_xml(bgg_games_xml_obj,
+                                                                        toJSON = toJSON)
+                                        })
+
+                                }
+
                                 # return
                                 out
                                 
                         }
                 
-                # then, get the pieces of each into one list
-                input_game_ids_batches = map(resp_batches, ~ .x[['input_game_ids']]) %>% unlist()
-                returned_game_ids_batches = map(resp_batches, ~ .x[['returned_game_ids']]) %>% unlist()
-                missing_game_ids_batches = map(resp_batches, ~ .x[['missing_game_ids']]) %>% unlist()
-                bgg_games_xml_batches = map(resp_batches, ~ .x[['bgg_games_xml']]) %>% unlist 
+                # then, return batches into one list (as data frame or xml or json, depending on selected options)
+                if (tidy == F) {
+                        
+                        input_game_ids_batches = map(resp_batches, ~ .x[['input_game_ids']]) %>% unlist()
+                        # returned_game_ids_batches = map(resp_batches, ~ .x[['returned_game_ids']]) %>% unlist()
+                        problem_game_ids_batches = map(resp_batches, ~ .x[['missing_game_ids']]) %>% unlist()
+                        bgg_games_xml_batches = map(resp_batches, ~ .x[['bgg_games_xml']]) %>% unlist
+                        
+                        out = list("input_game_ids" = input_game_ids_batches,
+                                   "problem_game_ids" = problem_game_ids_batches,
+                                   "bgg_games_xml" = bgg_games_xml_batches)
+                        
+                } else if (tidy == T & toJSON == F) {
+                        
+                        out = list("input_game_ids" = map(resp_batches, ~ .x[['input_game_ids']]) %>% unlist(),
+                                   "problem_game_ids" = map(resp_batches, ~ .x[['problem_game_ids']]) %>% unlist(),
+                                   "bgg_games_data" = map(resp_batches, ~ .x[['bgg_games_data']]) %>% bind_rows)
+                        
+                } else if (tidy ==T & toJSON == T) {
+                        
+                        out = list("input_game_ids" = map(resp_batches, ~ .x[['input_game_ids']]) %>% unlist(),
+                                   "problem_game_ids" = map(resp_batches, ~ .x[['problem_game_ids']]) %>% unlist(),
+                                   "bgg_games_data" = map(resp_batches, ~ .x[['bgg_games_data']]) %>% unlist)
                 
-                bgg_games_xml_obj = list("input_game_ids" = input_game_ids_batches,
-                                         "returned_game_ids" = returned_game_ids_batches,
-                                         "missing_game_ids" = missing_game_ids_batches,
-                                         "bgg_games_xml" = bgg_games_xml_batches)
-                
+                }
+   
                 message("all batches completed")
                 
         }
         
+        # to convert to json
         
-        # if tidy == T return with tidy bgg game data
-        if (tidy == T) {
-                
-                tidy_bgg_games_data = tidy_bgg_data_xml(bgg_games_xml_obj,
-                                                        toJSON)
-                
-                out = list("input_game_ids" = tidy_bgg_games_data$input_game_ids,
-                           "problem_game_ids" = tidy_bgg_games_data$problem_game_ids,
-                           "bgg_games_data" = tidy_bgg_games_data$bgg_games_data)
-                
-        } else {
-                # return the xml data
-                out = list("input_game_ids" = bgg_games_xml_obj$input_game_ids,
-                           "returned_game_ids" = bgg_games_xml_obj$returned_game_ids,
-                           "problem_game_ids" = bgg_games_xml_obj$missing_game_ids,
-                           "bgg_games_xml" = bgg_games_xml_obj$bgg_games_xml)
-                
-        }
-        
+        # 
+        # # if tidy == T return with tidy bgg game data
+        # if (tidy == T) {
+        #         
+        #         tidy_bgg_games_data = tidy_bgg_data_xml(bgg_games_xml_obj,
+        #                                                 toJSON)
+        #         
+        #         out = list("input_game_ids" = tidy_bgg_games_data$input_game_ids,
+        #                    "problem_game_ids" = tidy_bgg_games_data$problem_game_ids,
+        #                    "bgg_games_data" = tidy_bgg_games_data$bgg_games_data)
+        #         
+        # } else {
+        #         # return the xml data
+        #         out = list("input_game_ids" = bgg_games_xml_obj$input_game_ids,
+        #                    "returned_game_ids" = bgg_games_xml_obj$returned_game_ids,
+        #                    "problem_game_ids" = bgg_games_xml_obj$missing_game_ids,
+        #                    "bgg_games_xml" = bgg_games_xml_obj$bgg_games_xml)
+        #         
+        # }
+        # 
         return(out)
         
         
