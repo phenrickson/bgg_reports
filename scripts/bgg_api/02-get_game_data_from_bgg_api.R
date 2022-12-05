@@ -34,13 +34,13 @@ bgg_ids_vec = bgg_ids %>%
         unique %>%
         pull
 
-# push through function to get xml, tidy, and then convert to json
-bgg_games_json = get_bgg_games_data(bgg_ids_vec,
+# get table
+bgg_games_raw = get_bgg_games_data(bgg_ids_vec,
                               tidy = T,
-                              toJSON = T)
+                              toJSON = F)
 
 # to json
-save(bgg_games_json,
-        file = here("data", "api", paste("bgg_games_json_", Sys.Date(), ".Rdata", sep="")))
+save(bgg_games_raw,
+        file = here("data", "api", paste("bgg_games_raw_", Sys.Date(), ".Rdata", sep="")))
 
 rm(list=ls())

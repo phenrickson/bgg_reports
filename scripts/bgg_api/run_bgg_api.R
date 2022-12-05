@@ -4,7 +4,6 @@
 
 # 1 run scrape_bgg_ids.py
 # scrapes pages of boardgamegeek to get univrse of ids
-# py_file = here::here("scripts", "bgg_api", "00-scrape_bgg_ids.py")
 reticulate::source_python(here::here("scripts", "bgg_api", "00-scrape_bgg_ids.py"))
 
 # 2 load bgg ids to gcp

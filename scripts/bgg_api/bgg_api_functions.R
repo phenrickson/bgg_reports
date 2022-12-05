@@ -590,7 +590,7 @@ get_bgg_games_data = function(input_game_ids,
                                 if(tidy == T) {
                                         suppressMessages({
                                                 out = tidy_bgg_data_xml(bgg_games_xml_obj,
-                                                                        toJSON = toJSON)
+                                                                        toJSON = F)
                                         })
 
                                 }
@@ -622,7 +622,7 @@ get_bgg_games_data = function(input_game_ids,
                         
                         out = list("input_game_ids" = map(resp_batches, ~ .x[['input_game_ids']]) %>% unlist(),
                                    "problem_game_ids" = map(resp_batches, ~ .x[['problem_game_ids']]) %>% unlist(),
-                                   "bgg_games_data" = map(resp_batches, ~ .x[['bgg_games_data']]) %>% unlist)
+                                   "bgg_games_data" = map(resp_batches, ~ .x[['bgg_games_data']] %>% bind_rows %>% toJSON))
                 
                 }
    

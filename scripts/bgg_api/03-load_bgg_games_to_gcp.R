@@ -40,18 +40,18 @@ bgg_ids_vec = bgg_ids %>%
         unique %>%
         pull
 
-### get json obj
+### get raw obj
 # get files of scraped bgg ids
-bgg_json_folder = here("data", "api")
-bgg_json_files = list.files(bgg_json_folder)
+bgg_raw_folder = here("data", "api")
+bgg_raw_files = list.files(bgg_raw_folder)
 
 # get most recent ids file
-most_recent_json_file = 
-        bgg_json_files %>%
+most_recent_raw_file =
+        bgg_raw_files %>%
         # conver to tibble
         as_tibble("value") %>%
-        # contains "bgg_games_json")
-        filter(grepl("bgg_games_json", value)) %>%
+        # contains "bgg_games_raw")
+        filter(grepl("bgg_games_raw", value)) %>%
         # separate file name by underscore
         separate(value, into = c("source", "table", "obj", "date"), sep="_") %>%
         # separate date and file type
@@ -68,17 +68,17 @@ most_recent_json_file =
         pull(file)
 
 # make sure this file exists
-assert_that(most_recent_json_file %in% bgg_json_files, msg = "bgg json file not in folder")
+assert_that(most_recent_raw_file %in% bgg_raw_files, msg = "bgg raw file not in folder")
 
 # print the file
-message(paste("loading", most_recent_json_file))
+message(paste("loading", most_recent_raw_file))
 
 # read in file
-load(here(bgg_json_folder, most_recent_json_file))
+load(here(bgg_raw_folder, most_recent_raw_file))
 
-# get data from json to tibble
-bgg_games_data = fparse(bgg_games_json$bgg_games_data) %>%
-        as_tibble
+# # get data from json to tibble
+# bgg_games_data = fparse(bgg_games_json$bgg_games_data)
+bgg_games_data = bgg_games_raw$bgg_games_data
 
 ### get modeled tables to load to api
 
