@@ -1,0 +1,254 @@
+---
+title: "Predicting Upcoming Boardgames: Methodology"
+author: Phil Henrickson
+date: "`r Sys.Date()`"
+params:
+        params:
+        end_training_year: 2018
+        min_ratings: 30
+---
+
+```{r setup, include=F}
+
+# knitr chunk options
+knitr::opts_chunk$set(echo = F,
+                      error=F,
+                      dev="png",
+                      fig.width = 10,
+                      fig.height = 6)
+
+# options for displaying
+options(knitr.duplicate.label = "allow",
+        scipen = 999)
+
+```
+
+```{r packages, inclue=F, results = 'hide', message=F, warning=F}
+
+# tidyverse/modeling
+library(tidyverse)
+library(tidymodels)
+library(tidyselect)
+
+# recipes and workflows
+library(recipes)
+library(workflows)
+library(workflowsets)
+
+# additional
+library(magrittr)
+library(broom.mixed)
+library(data.table)
+library(tidytext)
+library(conflicted)
+library(lubridate)
+
+# tables
+library(gt)
+library(DT)
+# connections
+library(odbc)
+library(here)
+# bundling
+library(bundle)
+library(vetiver)
+
+# conflicts
+conflict_prefer("select", "dplyr")
+conflict_prefer("filter", "dplyr")
+conflict_prefer("replace_na", "tidyr")
+conflict_prefer("summarize", "dplyr")
+conflict_prefer("year", "lubridate")
+conflict_prefer("quarter", "lubridate")
+conflict_prefer("set_names", "magrittr")
+conflict_prefer("flatten", "purrr")
+conflict_prefer("tune", "tune")
+conflict_prefer("plotly", "layout")
+
+# functions
+source(here("functions", "theme_phil.R"))
+
+```
+
+```{r connect to gcp, include=F}
+
+# connect to gcp
+source(here("functions", "connect_to_gcp.R"))
+
+```
+
+```{r pull data for modeling, include = F}
+
+# get analysis games table
+analysis_games <-bq_table_download(bq_project_query(PROJECT_ID,
+                                  'SELECT * FROM bgg.analysis_games')) %>%
+        # change integers to numeric
+        mutate_if(is.integer, as.numeric) %>%
+        # change zeroes to NA
+        mutate_at(c("averageweight",
+                    "playingtime",
+                    "minplaytime",
+                    "maxplaytime",
+                    "yearpublished"),
+                  ~ case_when(. == 0 ~ NA_real_,
+                              TRUE ~ .)) %>%
+        arrange(desc(bayesaverage))
+
+# get links
+game_links<- bq_table_download(bq_project_query(PROJECT_ID,
+                                  'SELECT * FROM bgg.api_game_links'))
+
+```
+
+```{r extract specific tables from game links}
+
+game_compilations = 
+        game_links %>%
+        filter(type == 'compilation') %>%
+        transmute(
+                type,
+                compilation_name = value,
+                compilation_game_id = id,
+                game_id,
+                load_ts)
+
+game_implementations = 
+        game_links %>%
+        filter(type == 'implementation') %>%
+        transmute(
+                type,
+                implementation_name = value,
+                implementation_game_id = id,
+                game_id,
+                load_ts)
+
+game_implementations %>%
+        filter(grepl("Rococo", implementation_name))
+        
+```
+
+
+
+```{r pivot game links}
+
+game_links %>%
+        filter(
+
+```
+
+
+```{r old code for pivoting games}
+
+games_model = active_games %>%
+        left_join(.,
+                  game_types %>%
+                          mutate(value = case_when(value == "Players: Wargames with Rules Supporting Only Two Players" ~ "Players: Two Players Only Wargames",
+                                                   TRUE ~ value)) %>%
+                          left_join(., categorical_features_selected %>%
+                                            select(type, id, value, tidied, selected),
+                                    by = c("type", "id", "value")) %>%
+                          filter(selected == 'yes') %>%
+                          select(game_id, type, value) %>%
+                          mutate(type_abbrev = substr(type, 1, 3)) %>%
+                          mutate(value = tolower(gsub("[[:space:]]", "_", gsub("\\s+", " ", gsub("[[:punct:]]","", value))))) %>%
+                          mutate(value = case_when(value == 'family_players_wargames_with_rules_supporting_only_two_players' ~
+                                                           'family_players_two_players_only_wargames',
+                                                   TRUE ~ value)) %>%
+                          mutate(type = paste(type, value, sep="_")) %>%
+                          mutate(has_type = 1) %>%
+                          select(-value) %>%
+                          pivot_wider(names_from = c("type"),
+                                      values_from = c("has_type"),
+                                      id_cols = c("game_id"),
+                                      names_sep = "_",
+                                      values_fn = min,
+                                      values_fill = 0),
+                  by = "game_id") %>%
+        mutate(number_mechanics = rowSums(across(starts_with("mechanic_")))) %>% 
+        filter(number_mechanics < 25) %>%
+        select(-number_mechanics) %>%
+        rename(numowned = owned)
+
+```
+
+
+# ugh, made a mistake in the schema...
+
+# create caption for plots
+my_caption = list(labs(caption = paste(paste("Data from boardgamegeek.com as of", max(as.Date(active_games$timestamp))),
+                        paste("Data and analysis at https://phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
+
+
+# long table with game type variables
+game_types= DBI::dbGetQuery(bigquerycon, 
+                              'SELECT * FROM bgg.api_game_categories')
+
+# also pull the current list of games from the github account
+source(here::here("functions/get_bgg_data_from_github.R"))
+bgg_today = get_bgg_data_from_github(Sys.Date())
+
+```
+
+
+# What is this? {-}
+
+This notebook details my approach to building predictive models for newly released games on boardgamegeek.com (BGG). The end result is that I can take any newly released boardgame and estimate how it will be received on BGG using **only features that are available at the time of its release**. For each game, I estimate its complexity rating, its average BGG rating, and its number of user ratings using information about its mechanics, categories, designers, and publishers.
+
+The goal of this project is to get accurate estimates for BGG outcomes for upcoming board games. But, I am also interested in understanding **what the models learn about games on BGG**. What features of games are associated with high/low average ratings? What types of games typically receive high numbers of user ratings? What types of games tend to be the most complex? A predictive model learns these relationships on historical data and then applies what it has learned to future games.
+
+The historical data for this project comes from all games on BGG. I have previously created a pipeline to scrape all games (over >100k) listed in BGG's database, get each game's information using BGG's API, and store the output in a cloud data warehouse (GCP). 
+
+In this notebook I will show some exploratory analysis of BGG data, then detail my approach to training predictive models within the **tidymodels** framework using **recipes**, **workflows**, and **workflowsets**. I then use **bundle**, **vetiver**, and **plumber** to deploy these models.
+
+# The Data
+
+The data comes from boardgamegeek.com, which I access using the public BGG API. I train models on data that last pulled from BGG on **`r max(as.Date(active_games$timestamp))`**. 
+
+I make use of historical data from boardgamegeek. I will connect to a containing a variety of tables on game features and their current ratings on BGG. For this analysis, in training models, we will restrict ourserlves to games published through `r params$end_training_year`. We will validate the performance of our models by evaluating their performance in predicting games published in `r params$end_training_year + 1`.
+
+The data we are using comes from boardgamegeek.com, which we access by using the open BGG API. We are training models on data that last pulled from BGG on **`r max(as.Date(active_games$timestamp))`**. 
+
+We will be training models at the *game-level*, where every row corresponds to one game and every column corresponds to a feature of the game. 
+
+As of our most recent pull, our dataset contains **`r nrow(active_games)`** games. This is the entirety of games on BGG, many of which are unpublished prototypes and have not received any ratings by the BGG community.
+
+If we filter to games with a minimum of 30 user ratings, we have only **`r nrow(active_games %>% filter(usersrated >=30))`** games.
+
+For the bulk of this analysis, we will be training on games that have achieved at least `r params$min_ratings` user ratings. This is a design decision to restrict our sample to games that 1) have received some evaluation from the community and 2) speed up the time in training models. We can later view this as a parameter for tuning, allowing more or less historical games to enter the model for training. Based on some initial tests, `r params$min_ratings` was a useful cutoff point for both model performance and training time. 
+
+We will set up a training and validation split based on time. First, we'll train models on games published through `r params$end_training_year`, then evaluate their performance in predicting games published in `r params$end_training_year + 1` and `r params$end_training_year +2`. We will then make our model selection and retrain the models on all games published through `r params$end_training_year+2` in order to predict upcoming games. 
+
+We will be modeling four different outcomes: average weight, average rating, user ratings, and the geek rating. The geek rating is itself a combination of the average rating and number of user ratings, but I will be interested to see how well we do in modeling it directly vs modeling the underlying components and computing it.
+
+Our model training and evaluation plan will look something like this:
+
+1. Split games into training, validation, and test sets.
+        + Training set: on games published through `r params$end_training_year`
+        + Validation set: games published in `r params$end_training_year +1` and `r params$end_training_year+2`
+        + Test set: games published after `r params$end_training_year+2`
+2. Train candidate models for each outcome
+        + Select tuning parameters via cross validation on training set
+3. Evaluate models on validation set
+        + Identify best performing models
+4. Refit models on training and validation set
+5. Predict test set
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -1,0 +1,9 @@
+html_document:
+    theme: cerulean
+    toc_depth: 3
+    toc: TRUE #adds a Table of Contents
+    number_sections: TRUE #number your headings/sections
+    toc_float: TRUE #let your ToC follow you as you scroll
+    keep_md: no
+    fig.caption: yes
+    css: styles.css
