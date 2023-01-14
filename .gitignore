@@ -31,9 +31,12 @@ vignettes/*.pdf
 .DS_Store
 
 # ignore model objects
-models
+models/
 # ignore main data folder
-!data/
+data/
+!src/data/
+!src/models/
+
 
 index.html
 site_libs/
