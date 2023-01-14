@@ -6,4 +6,6 @@ html_document:
     toc_float: TRUE #let your ToC follow you as you scroll
     keep_md: no
     fig.caption: yes
+    self_contained: yes
+    mode: selfcontained
     css: styles.css
