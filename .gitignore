@@ -26,17 +26,15 @@ vignettes/*.pdf
 *.knit.md
 # R Environment Variables
 .Renviron
-user_workflows
+# R profiles
+.Rprofile
 .DS_Store
+
+# ignore model objects
 models
-adjusting_bgg_ratings_files
-raw
-predicting_user_collections_files
-game_report_cards_files
-create_visualizations_files
-adjusting_bgg_ratings.html
-adjusted_ratings_table.html
-create_visualizations.html
-game_report_cards.html
+# ignore main data folder
+!data/
+
 index.html
+site_libs/
 gcp-analytics-326219-c76fe0dc89d8.json
