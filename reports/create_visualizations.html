@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+
+
+
+<title>Create Visualizations for Presentation</title>
+
+<script src="site_libs/header-attrs-2.11/header-attrs.js"></script>
+<script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="site_libs/bootstrap-3.3.5/css/cerulean.min.css" rel="stylesheet" />
+<script src="site_libs/bootstrap-3.3.5/js/bootstrap.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/html5shiv.min.js"></script>
+<script src="site_libs/bootstrap-3.3.5/shim/respond.min.js"></script>
+<style>h1 {font-size: 34px;}
+       h1.title {font-size: 38px;}
+       h2 {font-size: 30px;}
+       h3 {font-size: 24px;}
+       h4 {font-size: 18px;}
+       h5 {font-size: 16px;}
+       h6 {font-size: 12px;}
+       code {color: inherit; background-color: rgba(0, 0, 0, 0.04);}
+       pre:not([class]) { background-color: white }</style>
+<script src="site_libs/jqueryui-1.11.4/jquery-ui.min.js"></script>
+<link href="site_libs/tocify-1.9.1/jquery.tocify.css" rel="stylesheet" />
+<script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
+<script src="site_libs/navigation-1.1/tabsets.js"></script>
+<link href="site_libs/highlightjs-9.12.0/default.css" rel="stylesheet" />
+<script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
+<link href="site_libs/tabwid-1.0.0/tabwid.css" rel="stylesheet" />
+<script src="site_libs/htmlwidgets-1.5.4/htmlwidgets.js"></script>
+<script src="site_libs/viz-1.8.2/viz.js"></script>
+<link href="site_libs/DiagrammeR-styles-0.2/styles.css" rel="stylesheet" />
+<script src="site_libs/grViz-binding-1.0.9/grViz.js"></script>
+<link href="site_libs/font-awesome-5.1.0/css/all.css" rel="stylesheet" />
+<link href="site_libs/font-awesome-5.1.0/css/v4-shims.css" rel="stylesheet" />
+
+<style type="text/css">
+  code{white-space: pre-wrap;}
+  span.smallcaps{font-variant: small-caps;}
+  span.underline{text-decoration: underline;}
+  div.column{display: inline-block; vertical-align: top; width: 50%;}
+  div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+  ul.task-list{list-style: none;}
+    </style>
+
+<style type="text/css">code{white-space: pre;}</style>
+<script type="text/javascript">
+if (window.hljs) {
+  hljs.configure({languages: []});
+  hljs.initHighlightingOnLoad();
+  if (document.readyState && document.readyState === "complete") {
+    window.setTimeout(function() { hljs.initHighlighting(); }, 0);
+  }
+}
+</script>
+
+
+
+
+
+
+
+
+<style type = "text/css">
+.main-container {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+img {
+  max-width:100%;
+}
+.tabbed-pane {
+  padding-top: 12px;
+}
+.html-widget {
+  margin-bottom: 20px;
+}
+button.code-folding-btn:focus {
+  outline: none;
+}
+summary {
+  display: list-item;
+}
+pre code {
+  padding: 0;
+}
+</style>
+
+
+<style type="text/css">
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu>.dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-top: -6px;
+  margin-left: -1px;
+  border-radius: 0 6px 6px 6px;
+}
+.dropdown-submenu:hover>.dropdown-menu {
+  display: block;
+}
+.dropdown-submenu>a:after {
+  display: block;
+  content: " ";
+  float: right;
+  width: 0;
+  height: 0;
+  border-color: transparent;
+  border-style: solid;
+  border-width: 5px 0 5px 5px;
+  border-left-color: #cccccc;
+  margin-top: 5px;
+  margin-right: -10px;
+}
+.dropdown-submenu:hover>a:after {
+  border-left-color: #adb5bd;
+}
+.dropdown-submenu.pull-left {
+  float: none;
+}
+.dropdown-submenu.pull-left>.dropdown-menu {
+  left: -100%;
+  margin-left: 10px;
+  border-radius: 6px 0 6px 6px;
+}
+</style>
+
+<script type="text/javascript">
+// manage active state of menu based on current page
+$(document).ready(function () {
+  // active menu anchor
+  href = window.location.pathname
+  href = href.substr(href.lastIndexOf('/') + 1)
+  if (href === "")
+    href = "index.html";
+  var menuAnchor = $('a[href="' + href + '"]');
+
+  // mark it active
+  menuAnchor.tab('show');
+
+  // if it's got a parent navbar menu mark it active as well
+  menuAnchor.closest('li.dropdown').addClass('active');
+
+  // Navbar adjustments
+  var navHeight = $(".navbar").first().height() + 15;
+  var style = document.createElement('style');
+  var pt = "padding-top: " + navHeight + "px; ";
+  var mt = "margin-top: -" + navHeight + "px; ";
+  var css = "";
+  // offset scroll position for anchor links (for fixed navbar)
+  for (var i = 1; i <= 6; i++) {
+    css += ".section h" + i + "{ " + pt + mt + "}\n";
+  }
+  style.innerHTML = "body {" + pt + "padding-bottom: 40px; }\n" + css;
+  document.head.appendChild(style);
+});
+</script>
+
+<!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "&#xe258;";
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+  background-color: transparent;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
+<!-- code folding -->
+
+
+
+<style type="text/css">
+
+#TOC {
+  margin: 25px 0px 20px 0px;
+}
+@media (max-width: 768px) {
+#TOC {
+  position: relative;
+  width: 100%;
+}
+}
+
+@media print {
+.toc-content {
+  /* see https://github.com/w3c/csswg-drafts/issues/4434 */
+  float: right;
+}
+}
+
+.toc-content {
+  padding-left: 30px;
+  padding-right: 40px;
+}
+
+div.main-container {
+  max-width: 1200px;
+}
+
+div.tocify {
+  width: 20%;
+  max-width: 260px;
+  max-height: 85%;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  div.tocify {
+    width: 25%;
+  }
+}
+
+@media (max-width: 767px) {
+  div.tocify {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.tocify ul, .tocify li {
+  line-height: 20px;
+}
+
+.tocify-subheader .tocify-item {
+  font-size: 0.90em;
+}
+
+.tocify .list-group-item {
+  border-radius: 0px;
+}
+
+
+</style>
+
+
+
+</head>
+
+<body>
+
+
+<div class="container-fluid main-container">
+
+
+<!-- setup 3col/9col grid for toc_float and main content  -->
+<div class="row">
+<div class="col-xs-12 col-sm-4 col-md-3">
+<div id="TOC" class="tocify">
+</div>
+</div>
+
+<div class="toc-content col-xs-12 col-sm-8 col-md-9">
+
+
+
+
+<div class="navbar navbar-default  navbar-fixed-top" role="navigation">
+  <div class="container">
+    <div class="navbar-header">
+      <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar">
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+      <a class="navbar-brand" href="index.html">Data Analysis Paralysis</a>
+    </div>
+    <div id="navbar" class="navbar-collapse collapse">
+      <ul class="nav navbar-nav">
+        <li>
+  <a href="https://phenrickson.github.io/data-analysis-paralysis/">
+    <span class="fa fa-home fa-lg"></span>
+     
+  </a>
+</li>
+      </ul>
+      <ul class="nav navbar-nav navbar-right">
+        <li>
+  <a href="mailto:&lt;phil.henrickson@gmail.com&gt;">
+    <span class="fa fa-envelope fa-lg"></span>
+     
+  </a>
+</li>
+<li>
+  <a href="http://github.com/phenrickson/">
+    <span class="fa fa-github fa-lg"></span>
+     
+  </a>
+</li>
+<li>
+  <a href="https://www.linkedin.com/in/phenrickson/">
+    <span class="fab fa-linkedin fa-lg"></span>
+     
+  </a>
+</li>
+      </ul>
+    </div><!--/.nav-collapse -->
+  </div><!--/.container -->
+</div><!--/.navbar -->
+
+<div id="header">
+
+
+
+<h1 class="title toc-ignore">Create Visualizations for Presentation</h1>
+
+</div>
+
+
+<div id="visualizations" class="section level1" number="1">
+<h1><span class="header-section-number">1</span> Visualizations</h1>
+<div id="a-golden-age-of-boardgames" class="section level2" number="1.1">
+<h2><span class="header-section-number">1.1</span> A Golden Age of Boardgames?</h2>
+<p>How many games are there in the BGG database with at least 1 rating? More games are coming out every single year.</p>
+<p><img src="create_visualizations_files/figure-html/games%20over%20time-1.png" width="960" /></p>
+</div>
+<div id="more-people-are-playing-games" class="section level2" number="1.2">
+<h2><span class="header-section-number">1.2</span> More People are Playing Games</h2>
+<p><img src="create_visualizations_files/figure-html/user%20ratings%20over%20time-1.png" width="960" /></p>
+</div>
+<div id="games-are-getting-better" class="section level2" number="1.3">
+<h2><span class="header-section-number">1.3</span> Games Are Getting Better</h2>
+<p>Average ratings by game over time.</p>
+<p><img src="create_visualizations_files/figure-html/average%20ratings%20over%20time-1.png" width="960" /></p>
+</div>
+<div id="all-the-games-you-like-are-bad" class="section level2" number="1.4">
+<h2><span class="header-section-number">1.4</span> All the Games You Like are Bad</h2>
+<p>Show how many popular games are bad.</p>
+<p><img src="create_visualizations_files/figure-html/user%20ratings%20vs%20average-1.png" width="960" /></p>
+<p>Why are some games higher rated/more popular than others? If we can learn something about this relationship, then we can predict which upcoming games are going to be good.</p>
+</div>
+<div id="families" class="section level2" number="1.5">
+<h2><span class="header-section-number">1.5</span> Families</h2>
+<p><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20family%20type-1.png" width="960" /><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20family%20type-2.png" width="960" /></p>
+<p>Some features we won’t include, such as the Mensa Select or implementations on BoardGameArena/Tabletopia, as these are outcomes that typically occur when a game has been popular and shouldn’t be used as predictors.</p>
+</div>
+<div id="categories" class="section level2" number="1.6">
+<h2><span class="header-section-number">1.6</span> Categories</h2>
+<p>We’ll do the same thing for categories, but this variable is much smaller and generally pretty well organized.</p>
+<p><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20category-1.png" width="960" /><img src="create_visualizations_files/figure-html/examine%20average%20and%20baverage%20by%20category-2.png" width="960" /></p>
+<p>We’ll include all of these, though there will likely be some overlap between these and other features which we can take care of with a correlation filter.</p>
+</div>
+<div id="mechanics" class="section level2" number="1.7">
+<h2><span class="header-section-number">1.7</span> Mechanics</h2>
+<p>Mechanics are also pretty well organized, so we don’t have to do much filtering.</p>
+<p><img src="create_visualizations_files/figure-html/now%20look%20at%20mechanics-1.png" width="960" /><img src="create_visualizations_files/figure-html/now%20look%20at%20mechanics-2.png" width="960" /></p>
+<pre class="r"><code># get full dataset
+games_full = games_model %&gt;%
+        mutate(dataset = case_when(yearpublished &lt;= params$end_training_year ~ &#39;train&#39;,
+                                   yearpublished == params$end_training_year+1 | yearpublished == params$end_training_year +2 ~ &#39;validation&#39;,
+                                   TRUE ~ &#39;test&#39;)) %&gt;%
+        mutate(log_usersrated = log1p(usersrated))
+
+# filter our training set to only games with at least n ratings
+games_train = games_full %&gt;%
+        filter(dataset == &#39;train&#39;) %&gt;%
+        filter(usersrated &gt;= params$min_ratings) %&gt;%
+        filter(game_id %in% (bgg_today$game_id)) # filter to include only games that are present in the list of released games from beefsack on github
+        
+
+games_validation = games_full %&gt;%
+        filter(dataset == &#39;validation&#39;) %&gt;%
+        filter(usersrated &gt;= params$min_ratings) %&gt;%
+        filter(game_id %in% (bgg_today$game_id)) # filter to include only games that are present in the list of released games from beefsack on github
+
+games_test =  games_full %&gt;%
+        filter(dataset == &#39;test&#39;)
+
+# count up number of games in each
+bind_rows(games_train,
+          games_validation,
+          games_test) %&gt;%
+        group_by(dataset) %&gt;%
+        count() %&gt;%
+        arrange(desc(n)) %&gt;%
+        rename(games = n) %&gt;%
+        flextable() %&gt;%
+        autofit()</code></pre>
+<template id="6b0d1142-0993-44fc-9d2b-b19322d432dd"><style>
+.tabwid table{
+  border-spacing:0px !important;
+  border-collapse:collapse;
+  line-height:1;
+  margin-left:auto;
+  margin-right:auto;
+  border-width: 0;
+  display: table;
+  margin-top: 1.275em;
+  margin-bottom: 1.275em;
+  border-color: transparent;
+}
+.tabwid_left table{
+  margin-left:0;
+}
+.tabwid_right table{
+  margin-right:0;
+}
+.tabwid td {
+    padding: 0;
+}
+.tabwid a {
+  text-decoration: none;
+}
+.tabwid thead {
+    background-color: transparent;
+}
+.tabwid tfoot {
+    background-color: transparent;
+}
+.tabwid table tr {
+background-color: transparent;
+}
+</style><div class="tabwid"><style>.cl-3f082d60{}.cl-3f051a94{font-family:'Helvetica';font-size:11pt;font-weight:normal;font-style:normal;text-decoration:none;color:rgba(102, 102, 102, 1.00);background-color:transparent;}.cl-3f052250{margin:0;text-align:left;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:3pt;padding-top:3pt;padding-left:3pt;padding-right:3pt;line-height: 1;background-color:transparent;}.cl-3f052278{margin:0;text-align:right;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);padding-bottom:3pt;padding-top:3pt;padding-left:3pt;padding-right:3pt;line-height: 1;background-color:transparent;}.cl-3f053f7e{width:61.7pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-3f053f88{width:48.8pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-3f053f92{width:61.7pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-3f053f9c{width:48.8pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-3f053fa6{width:61.7pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-3f053fb0{width:48.8pt;background-color:transparent;vertical-align: middle;border-bottom: 0 solid rgba(0, 0, 0, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-3f053fba{width:61.7pt;background-color:transparent;vertical-align: middle;border-bottom: 1pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}.cl-3f053fbb{width:48.8pt;background-color:transparent;vertical-align: middle;border-bottom: 1pt solid rgba(102, 102, 102, 1.00);border-top: 0 solid rgba(0, 0, 0, 1.00);border-left: 0 solid rgba(0, 0, 0, 1.00);border-right: 0 solid rgba(0, 0, 0, 1.00);margin-bottom:0;margin-top:0;margin-left:0;margin-right:0;}</style><table class='cl-3f082d60'>
+<thead><tr style="overflow-wrap:break-word;"><td class="cl-3f053fba"><p class="cl-3f052250"><span class="cl-3f051a94">dataset</span></p></td><td class="cl-3f053fbb"><p class="cl-3f052278"><span class="cl-3f051a94">games</span></p></td></tr></thead><tbody><tr style="overflow-wrap:break-word;"><td class="cl-3f053f7e"><p class="cl-3f052250"><span class="cl-3f051a94">train</span></p></td><td class="cl-3f053f88"><p class="cl-3f052278"><span class="cl-3f051a94">18,841</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-3f053f92"><p class="cl-3f052250"><span class="cl-3f051a94">validation</span></p></td><td class="cl-3f053f9c"><p class="cl-3f052278"><span class="cl-3f051a94">2,290</span></p></td></tr><tr style="overflow-wrap:break-word;"><td class="cl-3f053fa6"><p class="cl-3f052250"><span class="cl-3f051a94">test</span></p></td><td class="cl-3f053fb0"><p class="cl-3f052278"><span class="cl-3f051a94">1,096</span></p></td></tr></tbody></table></div></template>
+<div class="flextable-shadow-host" id="1c528bfc-c418-483e-8d67-7180e24468d3"></div>
+<script>
+var dest = document.getElementById("1c528bfc-c418-483e-8d67-7180e24468d3");
+var template = document.getElementById("6b0d1142-0993-44fc-9d2b-b19322d432dd");
+var caption = template.content.querySelector("caption");
+if(caption) {
+  caption.style.cssText = "display:block;text-align:center;";
+  var newcapt = document.createElement("p");
+  newcapt.appendChild(caption)
+  dest.parentNode.insertBefore(newcapt, dest.previousSibling);
+}
+var fantome = dest.attachShadow({mode: 'open'});
+var templateContent = template.content;
+fantome.appendChild(templateContent);
+</script>
+
+<p>We’re going to use the tidymodels framework for our model training and evaluation, so we’ll create custom splits around these for our workflows.</p>
+<pre class="r"><code># make an initial split based on previously defined splits
+validation_split = make_splits(list(analysis = seq(nrow(games_train)),
+                                 assessment = nrow(games_train) + seq(nrow(games_validation))),
+                            data  = bind_rows(games_train,
+                                      games_validation))</code></pre>
+<p>We can do a bit of exploratory analysis on this to help guide decisions we’ll make in our recipe, which we’ll build on the training set. We’ll look at some of the main numeric features of games, such as player counts, playingtime, and yearpublished, for each of our outcomes.</p>
+</div>
+<div id="scatter-plots" class="section level2" number="1.8">
+<h2><span class="header-section-number">1.8</span> Scatter Plots</h2>
+<p><img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20usersrated-1.png" width="960" /><img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20usersrated-2.png" width="960" /></p>
+</div>
+<div id="correlation-plots" class="section level2" number="1.9">
+<h2><span class="header-section-number">1.9</span> Correlation Plots</h2>
+<p>We can look at the correlation between our outcomes, the main features we have for games (playtime, player count, complexity) and some of the categorical features.</p>
+<div class="figure">
+<img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20categories-1.png" alt="Correlation plot of game info and game categories" width="1152" />
+<p class="caption">
+Correlation plot of game info and game categories
+</p>
+</div>
+<p>What about mechanics? Let’s look at the correlation between mechanics and these numeric features.</p>
+<div class="figure">
+<img src="create_visualizations_files/figure-html/correlation%20between%20predictors%20and%20mechanics-1.png" alt="Correlation plot of game info and game mechanics" width="1152" />
+<p class="caption">
+Correlation plot of game info and game mechanics
+</p>
+</div>
+</div>
+</div>
+<div id="visualizations-from-models" class="section level1" number="2">
+<h1><span class="header-section-number">2</span> Visualizations from Models</h1>
+<pre><code>##                    .id     wflow_id     best_tune     .workflow
+## 1:       average_tuned full_xgbTree &lt;tbl_df[1x4]&gt; &lt;workflow[4]&gt;
+## 2: averageweight_tuned full_xgbTree &lt;tbl_df[1x4]&gt; &lt;workflow[4]&gt;
+## 3:  bayesaverage_tuned full_xgbTree &lt;tbl_df[1x4]&gt; &lt;workflow[4]&gt;
+## 4:    usersrated_tuned full_xgbTree &lt;tbl_df[1x4]&gt; &lt;workflow[4]&gt;
+##                            splits       outcome
+## 1: &lt;rsplit[18768x2240x21008x672]&gt;       average
+## 2: &lt;rsplit[18768x2240x21008x672]&gt; averageweight
+## 3: &lt;rsplit[18768x2240x21008x672]&gt;  bayesaverage
+## 4: &lt;rsplit[18768x2240x21008x672]&gt;    usersrated</code></pre>
+<pre><code>## # A tibble: 2,291 × 1
+##    .pred
+##    &lt;dbl&gt;
+##  1  7.37
+##  2  7.33
+##  3  6.14
+##  4  7.70
+##  5  5.91
+##  6  6.99
+##  7  7.23
+##  8  6.34
+##  9  7.85
+## 10  5.39
+## # … with 2,281 more rows</code></pre>
+<div id="how-did-the-model-learn" class="section level3" number="2.0.1">
+<h3><span class="header-section-number">2.0.1</span> How did the model learn?</h3>
+<p>Plot the first tree and where it falls on the learning curve.</p>
+<p><img src="create_visualizations_files/figure-html/extract%20learning%20curve%20from%20the%20boosted%20trees%20and%20plot%20first%20iteration-1.png" width="960" /></p>
+<div id="htmlwidget-b0233941a8879679b116" style="width:960px;height:576px;" class="grViz html-widget"></div>
+<script type="application/json" data-for="htmlwidget-b0233941a8879679b116">{"x":{"diagram":"digraph {\n\ngraph [layout = \"dot\",\n       rankdir = \"LR\"]\n\nnode [color = \"DimGray\",\n      style = \"filled\",\n      fontname = \"Helvetica\"]\n\nedge [color = \"DimGray\",\n     arrowsize = \"1.5\",\n     arrowhead = \"vee\",\n     fontname = \"Helvetica\"]\n\n  \"1\" [label = \"Tree 0\nAverage Weight\nCover: 19914\nGain: 3166.6875\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"2\" [label = \"Year Published\nCover: 11604\nGain: 1277.125\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"3\" [label = \"Year Published\nCover: 8310\nGain: 596.53125\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"4\" [label = \"Uncredited Designer\nCover: 7415\nGain: 305.9375\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"5\" [label = \"Average Weight\nCover: 4189\nGain: 126.359375\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"6\" [label = \"Average Weight\nCover: 3622\nGain: 212.796875\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"7\" [label = \"Time Per Player\nCover: 4688\nGain: 267.65625\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"8\" [label = \"Leaf\nCover: 6317\nValue: 1.61113179\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"9\" [label = \"Leaf\nCover: 1098\nValue: 1.43197846\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"10\" [label = \"Leaf\nCover: 1007\nValue: 1.68918693\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"11\" [label = \"Leaf\nCover: 3182\nValue: 1.82724726\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"12\" [label = \"Leaf\nCover: 2517\nValue: 1.75721335\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"13\" [label = \"Leaf\nCover: 1105\nValue: 1.92804885\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"14\" [label = \"Leaf\nCover: 3107\nValue: 1.92176378\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"15\" [label = \"Leaf\nCover: 1581\nValue: 2.08518338\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n\"1\"->\"2\" [label = \"< 2.01310301\", style = \"bold\"] \n\"2\"->\"4\" [label = \"< 2014.5\", style = \"bold\"] \n\"3\"->\"6\" [label = \"< 2008.5\", style = \"bold\"] \n\"4\"->\"8\" [label = \"< 0.5\", style = \"bold\"] \n\"5\"->\"10\" [label = \"< 1.01064992\", style = \"bold\"] \n\"6\"->\"12\" [label = \"< 3.0156002\", style = \"bold\"] \n\"7\"->\"14\" [label = \"< 3.33506632\", style = \"bold\"] \n\"1\"->\"3\" [style = \"bold\", style = \"solid\"] \n\"2\"->\"5\" [style = \"solid\", style = \"solid\"] \n\"3\"->\"7\" [style = \"solid\", style = \"solid\"] \n\"4\"->\"9\" [style = \"solid\", style = \"solid\"] \n\"5\"->\"11\" [style = \"solid\", style = \"solid\"] \n\"6\"->\"13\" [style = \"solid\", style = \"solid\"] \n\"7\"->\"15\" [style = \"solid\", style = \"solid\"] \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+<p>Okay, now we try again.</p>
+<p><img src="create_visualizations_files/figure-html/extract%20learning%20curve%20from%20the%20boosted%20trees%20and%20plot%20fifth%20iteration-1.png" width="960" /></p>
+<div id="htmlwidget-1696e432444ef6914f0f" style="width:960px;height:576px;" class="grViz html-widget"></div>
+<script type="application/json" data-for="htmlwidget-1696e432444ef6914f0f">{"x":{"diagram":"digraph {\n\ngraph [layout = \"dot\",\n       rankdir = \"LR\"]\n\nnode [color = \"DimGray\",\n      style = \"filled\",\n      fontname = \"Helvetica\"]\n\nedge [color = \"DimGray\",\n     arrowsize = \"1.5\",\n     arrowhead = \"vee\",\n     fontname = \"Helvetica\"]\n\n  \"1\" [label = \"Tree 4\nAverage Weight\nCover: 19961\nGain: 352.6875\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"2\" [label = \"Year Published\nCover: 13797\nGain: 159.025391\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"3\" [label = \"Year Published\nCover: 6164\nGain: 107.126953\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"4\" [label = \"Movies TV Radio Theme\nCover: 7513\nGain: 67.4355469\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"5\" [label = \"Year Published\nCover: 6284\nGain: 69.2910156\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"6\" [label = \"Magazine Strategy Tactics\nCover: 1565\nGain: 17.6625977\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"7\" [label = \"Average Weight\nCover: 4599\nGain: 77.0664062\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"8\" [label = \"Leaf\nCover: 6962\nValue: 0.375404239\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"9\" [label = \"Leaf\nCover: 551\nValue: 0.265266448\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"10\" [label = \"Leaf\nCover: 5645\nValue: 0.421555251\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"11\" [label = \"Leaf\nCover: 639\nValue: 0.527261436\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"12\" [label = \"Leaf\nCover: 1423\nValue: 0.425253212\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"13\" [label = \"Leaf\nCover: 142\nValue: 0.308821052\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"14\" [label = \"Leaf\nCover: 4014\nValue: 0.491616577\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"15\" [label = \"Leaf\nCover: 585\nValue: 0.610216439\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n\"1\"->\"2\" [label = \"< 2.33384991\", style = \"bold\"] \n\"2\"->\"4\" [label = \"< 2012.5\", style = \"bold\"] \n\"3\"->\"6\" [label = \"< 1998.5\", style = \"bold\"] \n\"4\"->\"8\" [label = \"< 0.5\", style = \"bold\"] \n\"5\"->\"10\" [label = \"< 2019.5\", style = \"bold\"] \n\"6\"->\"12\" [label = \"< 0.5\", style = \"bold\"] \n\"7\"->\"14\" [label = \"< 3.61045003\", style = \"bold\"] \n\"1\"->\"3\" [style = \"bold\", style = \"solid\"] \n\"2\"->\"5\" [style = \"solid\", style = \"solid\"] \n\"3\"->\"7\" [style = \"solid\", style = \"solid\"] \n\"4\"->\"9\" [style = \"solid\", style = \"solid\"] \n\"5\"->\"11\" [style = \"solid\", style = \"solid\"] \n\"6\"->\"13\" [style = \"solid\", style = \"solid\"] \n\"7\"->\"15\" [style = \"solid\", style = \"solid\"] \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+<div id="htmlwidget-fb99835d27ccc2743f92" style="width:960px;height:576px;" class="grViz html-widget"></div>
+<script type="application/json" data-for="htmlwidget-fb99835d27ccc2743f92">{"x":{"diagram":"digraph {\n\ngraph [layout = \"dot\",\n       rankdir = \"LR\"]\n\nnode [color = \"DimGray\",\n      style = \"filled\",\n      fontname = \"Helvetica\"]\n\nedge [color = \"DimGray\",\n     arrowsize = \"1.5\",\n     arrowhead = \"vee\",\n     fontname = \"Helvetica\"]\n\n  \"1\" [label = \"Tree 10\nAverage Weight\nCover: 20023\nGain: 44.0177612\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"2\" [label = \"Asmodee\nCover: 17745\nGain: 42.3409729\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"3\" [label = \"Year Published\nCover: 2278\nGain: 22.87323\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"4\" [label = \"Hasbro\nCover: 17255\nGain: 39.1345215\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"5\" [label = \"Max Players\nCover: 490\nGain: 6.45587921\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"6\" [label = \"Magazine Strategy Tactics\nCover: 473\nGain: 6.30824709\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"7\" [label = \"Hexagon Grid\nCover: 1805\nGain: 26.501236\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"8\" [label = \"Leaf\nCover: 16703\nValue: 0.0448876545\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"9\" [label = \"Leaf\nCover: 552\nValue: -0.0362497829\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"10\" [label = \"Leaf\nCover: 361\nValue: 0.110489517\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"11\" [label = \"Leaf\nCover: 129\nValue: 0.189580277\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"12\" [label = \"Leaf\nCover: 436\nValue: 0.0404029973\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"13\" [label = \"Leaf\nCover: 37\nValue: -0.0871348828\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"14\" [label = \"Leaf\nCover: 1225\nValue: 0.079327479\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"15\" [label = \"Leaf\nCover: 580\nValue: 0.157290846\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"16\" [label = \"Tree 9\nUncredited Designer\nCover: 19967\nGain: 53.4621582\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"17\" [label = \"Number Mechanics\nCover: 18674\nGain: 48.5836182\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"18\" [label = \"Year Published\nCover: 1293\nGain: 26.8426743\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"19\" [label = \"Sports\nCover: 12892\nGain: 38.6860962\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"20\" [label = \"Year Published\nCover: 5782\nGain: 19.2250366\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"21\" [label = \"Childrens Game\nCover: 590\nGain: 13.5262241\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"22\" [label = \"Average Weight\nCover: 703\nGain: 6.87790871\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"23\" [label = \"Leaf\nCover: 12577\nValue: 0.0627295524\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"24\" [label = \"Leaf\nCover: 315\nValue: 0.169072658\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"25\" [label = \"Leaf\nCover: 716\nValue: 0.0523325466\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"26\" [label = \"Leaf\nCover: 5066\nValue: 0.104964204\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"27\" [label = \"Leaf\nCover: 469\nValue: 0.0826785862\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"28\" [label = \"Leaf\nCover: 121\nValue: -0.0295940917\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"29\" [label = \"Leaf\nCover: 660\nValue: -0.0193867218\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"30\" [label = \"Leaf\nCover: 43\nValue: -0.141953737\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"31\" [label = \"Tree 8\nAverage Weight\nCover: 19933\nGain: 84.9018555\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"32\" [label = \"Year Published\nCover: 2376\nGain: 17.2433891\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"33\" [label = \"Year Published\nCover: 17557\nGain: 67.0949707\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"34\" [label = \"Max Players\nCover: 1524\nGain: 9.34407806\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"35\" [label = \"Missing Playtingtime\nCover: 852\nGain: 14.7128143\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"36\" [label = \"Rio Grande Games\nCover: 6585\nGain: 21.3619385\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"37\" [label = \"Wargame\nCover: 10972\nGain: 58.501709\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"38\" [label = \"Leaf\nCover: 1391\nValue: 0.0218877792\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"39\" [label = \"Leaf\nCover: 133\nValue: 0.104875639\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"40\" [label = \"Leaf\nCover: 775\nValue: 0.0949171484\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"41\" [label = \"Leaf\nCover: 77\nValue: -0.0421179645\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"42\" [label = \"Leaf\nCover: 6379\nValue: 0.0817267895\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"43\" [label = \"Leaf\nCover: 206\nValue: 0.179833964\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"44\" [label = \"Leaf\nCover: 9387\nValue: 0.114136882\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"45\" [label = \"Leaf\nCover: 1585\nValue: 0.176521063\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"46\" [label = \"Tree 7\nMiniatures Game\nCover: 19929\nGain: 96.6411133\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"47\" [label = \"Games With Solitaire Rules\nCover: 18955\nGain: 89.9472656\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"48\" [label = \"Wargame\nCover: 974\nGain: 10.4727783\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"49\" [label = \"Roll Spin And Move\nCover: 17952\nGain: 76.4196777\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"50\" [label = \"Year Published\nCover: 1003\nGain: 7.39691162\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"51\" [label = \"Average Weight\nCover: 503\nGain: 8.36442566\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"52\" [label = \"Year Published\nCover: 471\nGain: 7.60296631\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"53\" [label = \"Leaf\nCover: 16696\nValue: 0.141371399\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"54\" [label = \"Leaf\nCover: 1256\nValue: 0.0645644963\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"55\" [label = \"Leaf\nCover: 20\nValue: 0.0452154018\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"56\" [label = \"Leaf\nCover: 983\nValue: 0.232062712\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"57\" [label = \"Leaf\nCover: 55\nValue: 0.0938745365\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"58\" [label = \"Leaf\nCover: 448\nValue: 0.22026892\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"59\" [label = \"Leaf\nCover: 47\nValue: 0.151043326\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"60\" [label = \"Leaf\nCover: 424\nValue: 0.283560783\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"61\" [label = \"Tree 6\nAverage Weight\nCover: 19950\nGain: 147.045898\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"62\" [label = \"Uncredited Designer\nCover: 5138\nGain: 46.4871826\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"63\" [label = \"Year Published\nCover: 14812\nGain: 105.308105\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"64\" [label = \"Year Published\nCover: 4484\nGain: 36.0761719\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"65\" [label = \"Unknown\nCover: 654\nGain: 9.93404007\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"66\" [label = \"Average Weight\nCover: 12212\nGain: 63.9614258\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"67\" [label = \"Miniatures Game\nCover: 2600\nGain: 28.9980469\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"68\" [label = \"Leaf\nCover: 178\nValue: 0.0421140119\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"69\" [label = \"Leaf\nCover: 4306\nValue: 0.180209339\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"70\" [label = \"Leaf\nCover: 620\nValue: 0.0975721106\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"71\" [label = \"Leaf\nCover: 34\nValue: -0.0674206018\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"72\" [label = \"Leaf\nCover: 11636\nValue: 0.2062345\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"73\" [label = \"Leaf\nCover: 576\nValue: 0.308959335\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"74\" [label = \"Leaf\nCover: 2367\nValue: 0.267552495\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"75\" [label = \"Leaf\nCover: 233\nValue: 0.379879802\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"76\" [label = \"Tree 5\nNumber Mechanics\nCover: 19959\nGain: 226.037109\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"77\" [label = \"Max Players\nCover: 5685\nGain: 31.5827637\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"78\" [label = \"Number Mechanics\nCover: 14274\nGain: 126.612305\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"79\" [label = \"Average Weight\nCover: 1275\nGain: 17.6663818\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"80\" [label = \"Year Published\nCover: 4410\nGain: 24.8693848\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"81\" [label = \"Max Players\nCover: 12191\nGain: 96.6728516\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"82\" [label = \"Year Published\nCover: 2083\nGain: 57.0737305\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"83\" [label = \"Leaf\nCover: 302\nValue: 0.222437903\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"84\" [label = \"Leaf\nCover: 973\nValue: 0.307510734\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"85\" [label = \"Leaf\nCover: 4115\nValue: 0.22722742\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"86\" [label = \"Leaf\nCover: 295\nValue: 0.318346441\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"87\" [label = \"Leaf\nCover: 2894\nValue: 0.352819681\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"88\" [label = \"Leaf\nCover: 9297\nValue: 0.289707541\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"89\" [label = \"Leaf\nCover: 404\nValue: 0.282359809\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"90\" [label = \"Leaf\nCover: 1679\nValue: 0.409618676\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n\"1\"->\"2\" [label = \"< 3.00274992\", style = \"bold\"] \n\"2\"->\"4\" [label = \"< 0.5\", style = \"bold\"] \n\"3\"->\"6\" [label = \"< 1992.5\", style = \"bold\"] \n\"4\"->\"8\" [label = \"< 0.5\", style = \"bold\"] \n\"5\"->\"10\" [label = \"< 6.5\", style = \"bold\"] \n\"6\"->\"12\" [label = \"< 0.5\", style = \"bold\"] \n\"7\"->\"14\" [label = \"< 0.5\", style = \"bold\"] \n\"16\"->\"17\" [label = \"< 0.5\", style = \"bold\"] \n\"17\"->\"19\" [label = \"< 3.5\", style = \"bold\"] \n\"18\"->\"21\" [label = \"< 1993.5\", style = \"bold\"] \n\"19\"->\"23\" [label = \"< 0.5\", style = \"bold\"] \n\"20\"->\"25\" [label = \"< 1991.5\", style = \"bold\"] \n\"21\"->\"27\" [label = \"< 0.5\", style = \"bold\"] \n\"22\"->\"29\" [label = \"< 2.28415012\", style = \"bold\"] \n\"31\"->\"32\" [label = \"< 1.01932311\", style = \"bold\"] \n\"32\"->\"34\" [label = \"< 2015.5\", style = \"bold\"] \n\"33\"->\"36\" [label = \"< 2006.5\", style = \"bold\"] \n\"34\"->\"38\" [label = \"< 11.5\", style = \"bold\"] \n\"35\"->\"40\" [label = \"< 0.5\", style = \"bold\"] \n\"36\"->\"42\" [label = \"< 0.5\", style = \"bold\"] \n\"37\"->\"44\" [label = \"< 0.5\", style = \"bold\"] \n\"46\"->\"47\" [label = \"< 0.5\", style = \"bold\"] \n\"47\"->\"49\" [label = \"< 0.5\", style = \"bold\"] \n\"48\"->\"51\" [label = \"< 0.5\", style = \"bold\"] \n\"49\"->\"53\" [label = \"< 0.5\", style = \"bold\"] \n\"50\"->\"55\" [label = \"< 1976.5\", style = \"bold\"] \n\"51\"->\"57\" [label = \"< 1.77495003\", style = \"bold\"] \n\"52\"->\"59\" [label = \"< 1989.5\", style = \"bold\"] \n\"61\"->\"62\" [label = \"< 1.3386879\", style = \"bold\"] \n\"62\"->\"64\" [label = \"< 0.5\", style = \"bold\"] \n\"63\"->\"66\" [label = \"< 2017.5\", style = \"bold\"] \n\"64\"->\"68\" [label = \"< 1981.5\", style = \"bold\"] \n\"65\"->\"70\" [label = \"< 0.5\", style = \"bold\"] \n\"66\"->\"72\" [label = \"< 3.68799996\", style = \"bold\"] \n\"67\"->\"74\" [label = \"< 0.5\", style = \"bold\"] \n\"76\"->\"77\" [label = \"< 1.5\", style = \"bold\"] \n\"77\"->\"79\" [label = \"< 3.5\", style = \"bold\"] \n\"78\"->\"81\" [label = \"< 5.5\", style = \"bold\"] \n\"79\"->\"83\" [label = \"< 1.46605003\", style = \"bold\"] \n\"80\"->\"85\" [label = \"< 2018.5\", style = \"bold\"] \n\"81\"->\"87\" [label = \"< 3.5\", style = \"bold\"] \n\"82\"->\"89\" [label = \"< 1991.5\", style = \"bold\"] \n\"1\"->\"3\" [style = \"bold\", style = \"solid\"] \n\"2\"->\"5\" [style = \"solid\", style = \"solid\"] \n\"3\"->\"7\" [style = \"solid\", style = \"solid\"] \n\"4\"->\"9\" [style = \"solid\", style = \"solid\"] \n\"5\"->\"11\" [style = \"solid\", style = \"solid\"] \n\"6\"->\"13\" [style = \"solid\", style = \"solid\"] \n\"7\"->\"15\" [style = \"solid\", style = \"solid\"] \n\"16\"->\"18\" [style = \"solid\", style = \"solid\"] \n\"17\"->\"20\" [style = \"solid\", style = \"solid\"] \n\"18\"->\"22\" [style = \"solid\", style = \"solid\"] \n\"19\"->\"24\" [style = \"solid\", style = \"solid\"] \n\"20\"->\"26\" [style = \"solid\", style = \"solid\"] \n\"21\"->\"28\" [style = \"solid\", style = \"solid\"] \n\"22\"->\"30\" [style = \"solid\", style = \"solid\"] \n\"31\"->\"33\" [style = \"solid\", style = \"solid\"] \n\"32\"->\"35\" [style = \"solid\", style = \"solid\"] \n\"33\"->\"37\" [style = \"solid\", style = \"solid\"] \n\"34\"->\"39\" [style = \"solid\", style = \"solid\"] \n\"35\"->\"41\" [style = \"solid\", style = \"solid\"] \n\"36\"->\"43\" [style = \"solid\", style = \"solid\"] \n\"37\"->\"45\" [style = \"solid\", style = \"solid\"] \n\"46\"->\"48\" [style = \"solid\", style = \"solid\"] \n\"47\"->\"50\" [style = \"solid\", style = \"solid\"] \n\"48\"->\"52\" [style = \"solid\", style = \"solid\"] \n\"49\"->\"54\" [style = \"solid\", style = \"solid\"] \n\"50\"->\"56\" [style = \"solid\", style = \"solid\"] \n\"51\"->\"58\" [style = \"solid\", style = \"solid\"] \n\"52\"->\"60\" [style = \"solid\", style = \"solid\"] \n\"61\"->\"63\" [style = \"solid\", style = \"solid\"] \n\"62\"->\"65\" [style = \"solid\", style = \"solid\"] \n\"63\"->\"67\" [style = \"solid\", style = \"solid\"] \n\"64\"->\"69\" [style = \"solid\", style = \"solid\"] \n\"65\"->\"71\" [style = \"solid\", style = \"solid\"] \n\"66\"->\"73\" [style = \"solid\", style = \"solid\"] \n\"67\"->\"75\" [style = \"solid\", style = \"solid\"] \n\"76\"->\"78\" [style = \"solid\", style = \"solid\"] \n\"77\"->\"80\" [style = \"solid\", style = \"solid\"] \n\"78\"->\"82\" [style = \"solid\", style = \"solid\"] \n\"79\"->\"84\" [style = \"solid\", style = \"solid\"] \n\"80\"->\"86\" [style = \"solid\", style = \"solid\"] \n\"81\"->\"88\" [style = \"solid\", style = \"solid\"] \n\"82\"->\"90\" [style = \"solid\", style = \"solid\"] \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+<div id="htmlwidget-ead89f9ace0b6e4f3228" style="width:960px;height:576px;" class="grViz html-widget"></div>
+<script type="application/json" data-for="htmlwidget-ead89f9ace0b6e4f3228">{"x":{"diagram":"digraph {\n\ngraph [layout = \"dot\",\n       rankdir = \"LR\"]\n\nnode [color = \"DimGray\",\n      style = \"filled\",\n      fontname = \"Helvetica\"]\n\nedge [color = \"DimGray\",\n     arrowsize = \"1.5\",\n     arrowhead = \"vee\",\n     fontname = \"Helvetica\"]\n\n  \"1\" [label = \"Tree 15\nMissing Playtingtime\nCover: 19913\nGain: 19.0255814\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"2\" [label = \"Number Mechanics\nCover: 19210\nGain: 17.6087265\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"3\" [label = \"Min Age\nCover: 703\nGain: 9.14183426\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"4\" [label = \"Trading\nCover: 17949\nGain: 16.5047226\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"5\" [label = \"Year Published\nCover: 1261\nGain: 5.59409714\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"6\" [label = \"Decision Games I\nCover: 176\nGain: 2.59708095\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"7\" [label = \"Min Age\nCover: 527\nGain: 12.8723602\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"8\" [label = \"Leaf\nCover: 17453\nValue: 0.00927581638\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"9\" [label = \"Leaf\nCover: 496\nValue: -0.0461679585\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"10\" [label = \"Leaf\nCover: 139\nValue: -0.0122889616\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"11\" [label = \"Leaf\nCover: 1122\nValue: 0.0514319763\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"12\" [label = \"Leaf\nCover: 142\nValue: 0.0368872024\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"13\" [label = \"Leaf\nCover: 34\nValue: -0.0543573722\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"14\" [label = \"Leaf\nCover: 242\nValue: -0.11054071\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"15\" [label = \"Leaf\nCover: 285\nValue: -0.0164904147\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"16\" [label = \"Tree 14\nAsmodee\nCover: 19924\nGain: 22.4409599\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"17\" [label = \"Average Weight\nCover: 19385\nGain: 22.2301235\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"18\" [label = \"Party Game\nCover: 539\nGain: 3.10928345\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"19\" [label = \"Sports\nCover: 18819\nGain: 19.5488205\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"20\" [label = \"Min Age\nCover: 566\nGain: 5.29236412\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"21\" [label = \"Deduction Game\nCover: 428\nGain: 3.77946472\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"22\" [label = \"Year Published\nCover: 111\nGain: 3.23169899\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"23\" [label = \"Leaf\nCover: 18360\nValue: 0.00714254193\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"24\" [label = \"Leaf\nCover: 459\nValue: 0.0697585046\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"25\" [label = \"Leaf\nCover: 532\nValue: 0.0613861829\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"26\" [label = \"Leaf\nCover: 34\nValue: 0.182411551\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"27\" [label = \"Leaf\nCover: 397\nValue: 0.0524205938\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"28\" [label = \"Leaf\nCover: 31\nValue: 0.160161093\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"29\" [label = \"Leaf\nCover: 72\nValue: 0.154621348\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"30\" [label = \"Leaf\nCover: 39\nValue: 0.0460728332\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"31\" [label = \"Tree 13\nMovies TV Radio Theme\nCover: 19971\nGain: 31.5115128\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"32\" [label = \"Year Published\nCover: 18962\nGain: 21.7547913\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"33\" [label = \"Science Fiction\nCover: 1009\nGain: 10.9148369\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"34\" [label = \"Max Players\nCover: 18121\nGain: 20.7333794\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"35\" [label = \"Deck Bag And Pool Building\nCover: 841\nGain: 3.20632553\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"36\" [label = \"Missing Playtingtime\nCover: 777\nGain: 8.35534477\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"37\" [label = \"Average Weight\nCover: 232\nGain: 4.43484068\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"38\" [label = \"Leaf\nCover: 4159\nValue: 0.0361739099\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"39\" [label = \"Leaf\nCover: 13962\nValue: 0.0120431334\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"40\" [label = \"Leaf\nCover: 786\nValue: 0.0618644916\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"41\" [label = \"Leaf\nCover: 55\nValue: 0.136732683\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"42\" [label = \"Leaf\nCover: 724\nValue: -0.0430852473\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"43\" [label = \"Leaf\nCover: 53\nValue: -0.165624201\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"44\" [label = \"Leaf\nCover: 33\nValue: -0.0779090747\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"45\" [label = \"Leaf\nCover: 199\nValue: 0.0393606275\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"46\" [label = \"Tree 12\nMin Players\nCover: 19928\nGain: 29.0968933\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"47\" [label = \"Sports\nCover: 3170\nGain: 17.2531738\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"48\" [label = \"Number Mechanics\nCover: 16758\nGain: 25.6638031\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"49\" [label = \"Decision Games I\nCover: 3068\nGain: 14.2809143\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"50\" [label = \"Average Weight\nCover: 102\nGain: 10.7865105\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"51\" [label = \"Action Dexterity\nCover: 1331\nGain: 20.7642746\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"52\" [label = \"Miniatures Game\nCover: 15427\nGain: 24.6918716\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"53\" [label = \"Leaf\nCover: 2956\nValue: 0.0502370074\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"54\" [label = \"Leaf\nCover: 112\nValue: -0.058521837\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"55\" [label = \"Leaf\nCover: 17\nValue: -0.0447850339\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"56\" [label = \"Leaf\nCover: 85\nValue: 0.214387521\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"57\" [label = \"Leaf\nCover: 1111\nValue: -0.0376557037\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"58\" [label = \"Leaf\nCover: 220\nValue: 0.0630368292\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"59\" [label = \"Leaf\nCover: 14667\nValue: 0.0196927395\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"60\" [label = \"Leaf\nCover: 760\nValue: 0.0751219392\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"61\" [label = \"Tree 11\nYear Published\nCover: 19964\nGain: 36.5248718\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"62\" [label = \"Frédéric Bey\nCover: 15275\nGain: 31.2239075\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"63\" [label = \"Time Per Player\nCover: 4689\nGain: 19.0165863\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"64\" [label = \"Combinatorial\nCover: 15222\nGain: 29.7361145\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"65\" [label = \"Number Mechanics\nCover: 53\nGain: 0.918422699\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"66\" [label = \"Missing Playtingtime\nCover: 2803\nGain: 14.901989\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"67\" [label = \"Max Players\nCover: 1886\nGain: 5.77766418\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"68\" [label = \"Leaf\nCover: 14942\nValue: 0.0256334953\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"69\" [label = \"Leaf\nCover: 280\nValue: 0.124151774\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"70\" [label = \"Leaf\nCover: 36\nValue: 0.287418067\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"71\" [label = \"Leaf\nCover: 17\nValue: 0.177234709\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"72\" [label = \"Leaf\nCover: 2679\nValue: 0.0475491174\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"73\" [label = \"Leaf\nCover: 124\nValue: -0.0584944114\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"74\" [label = \"Leaf\nCover: 590\nValue: 0.106530599\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"75\" [label = \"Leaf\nCover: 1296\nValue: 0.0705132782\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"76\" [label = \"Tree 10\nAverage Weight\nCover: 20023\nGain: 44.0177612\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"77\" [label = \"Asmodee\nCover: 17745\nGain: 42.3409729\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"78\" [label = \"Year Published\nCover: 2278\nGain: 22.87323\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"79\" [label = \"Hasbro\nCover: 17255\nGain: 39.1345215\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"80\" [label = \"Max Players\nCover: 490\nGain: 6.45587921\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"81\" [label = \"Magazine Strategy Tactics\nCover: 473\nGain: 6.30824709\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"82\" [label = \"Hexagon Grid\nCover: 1805\nGain: 26.501236\", shape = \"rectangle\", fontcolor = \"black\", fillcolor = \"Beige\"] \n  \"83\" [label = \"Leaf\nCover: 16703\nValue: 0.0448876545\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"84\" [label = \"Leaf\nCover: 552\nValue: -0.0362497829\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"85\" [label = \"Leaf\nCover: 361\nValue: 0.110489517\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"86\" [label = \"Leaf\nCover: 129\nValue: 0.189580277\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"87\" [label = \"Leaf\nCover: 436\nValue: 0.0404029973\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"88\" [label = \"Leaf\nCover: 37\nValue: -0.0871348828\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"89\" [label = \"Leaf\nCover: 1225\nValue: 0.079327479\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n  \"90\" [label = \"Leaf\nCover: 580\nValue: 0.157290846\", shape = \"oval\", fontcolor = \"black\", fillcolor = \"Khaki\"] \n\"1\"->\"2\" [label = \"< 0.5\", style = \"bold\"] \n\"2\"->\"4\" [label = \"< 6.5\", style = \"bold\"] \n\"3\"->\"6\" [label = \"< 3.5\", style = \"bold\"] \n\"4\"->\"8\" [label = \"< 0.5\", style = \"bold\"] \n\"5\"->\"10\" [label = \"< 1979.5\", style = \"bold\"] \n\"6\"->\"12\" [label = \"< 0.5\", style = \"bold\"] \n\"7\"->\"14\" [label = \"< 8.5\", style = \"bold\"] \n\"16\"->\"17\" [label = \"< 0.5\", style = \"bold\"] \n\"17\"->\"19\" [label = \"< 3.76060009\", style = \"bold\"] \n\"18\"->\"21\" [label = \"< 0.5\", style = \"bold\"] \n\"19\"->\"23\" [label = \"< 0.5\", style = \"bold\"] \n\"20\"->\"25\" [label = \"< 14.5\", style = \"bold\"] \n\"21\"->\"27\" [label = \"< 0.5\", style = \"bold\"] \n\"22\"->\"29\" [label = \"< 2013.5\", style = \"bold\"] \n\"31\"->\"32\" [label = \"< 0.5\", style = \"bold\"] \n\"32\"->\"34\" [label = \"< 2019.5\", style = \"bold\"] \n\"33\"->\"36\" [label = \"< 0.5\", style = \"bold\"] \n\"34\"->\"38\" [label = \"< 2.5\", style = \"bold\"] \n\"35\"->\"40\" [label = \"< 0.5\", style = \"bold\"] \n\"36\"->\"42\" [label = \"< 0.5\", style = \"bold\"] \n\"37\"->\"44\" [label = \"< 1.2111001\", style = \"bold\"] \n\"46\"->\"47\" [label = \"< 1.5\", style = \"bold\"] \n\"47\"->\"49\" [label = \"< 0.5\", style = \"bold\"] \n\"48\"->\"51\" [label = \"< 0.5\", style = \"bold\"] \n\"49\"->\"53\" [label = \"< 0.5\", style = \"bold\"] \n\"50\"->\"55\" [label = \"< 1.30949998\", style = \"bold\"] \n\"51\"->\"57\" [label = \"< 0.5\", style = \"bold\"] \n\"52\"->\"59\" [label = \"< 0.5\", style = \"bold\"] \n\"61\"->\"62\" [label = \"< 2016.5\", style = \"bold\"] \n\"62\"->\"64\" [label = \"< 0.5\", style = \"bold\"] \n\"63\"->\"66\" [label = \"< 2.74031949\", style = \"bold\"] \n\"64\"->\"68\" [label = \"< 0.5\", style = \"bold\"] \n\"65\"->\"70\" [label = \"< 2.5\", style = \"bold\"] \n\"66\"->\"72\" [label = \"< 0.5\", style = \"bold\"] \n\"67\"->\"74\" [label = \"< 2.5\", style = \"bold\"] \n\"76\"->\"77\" [label = \"< 3.00274992\", style = \"bold\"] \n\"77\"->\"79\" [label = \"< 0.5\", style = \"bold\"] \n\"78\"->\"81\" [label = \"< 1992.5\", style = \"bold\"] \n\"79\"->\"83\" [label = \"< 0.5\", style = \"bold\"] \n\"80\"->\"85\" [label = \"< 6.5\", style = \"bold\"] \n\"81\"->\"87\" [label = \"< 0.5\", style = \"bold\"] \n\"82\"->\"89\" [label = \"< 0.5\", style = \"bold\"] \n\"1\"->\"3\" [style = \"bold\", style = \"solid\"] \n\"2\"->\"5\" [style = \"solid\", style = \"solid\"] \n\"3\"->\"7\" [style = \"solid\", style = \"solid\"] \n\"4\"->\"9\" [style = \"solid\", style = \"solid\"] \n\"5\"->\"11\" [style = \"solid\", style = \"solid\"] \n\"6\"->\"13\" [style = \"solid\", style = \"solid\"] \n\"7\"->\"15\" [style = \"solid\", style = \"solid\"] \n\"16\"->\"18\" [style = \"solid\", style = \"solid\"] \n\"17\"->\"20\" [style = \"solid\", style = \"solid\"] \n\"18\"->\"22\" [style = \"solid\", style = \"solid\"] \n\"19\"->\"24\" [style = \"solid\", style = \"solid\"] \n\"20\"->\"26\" [style = \"solid\", style = \"solid\"] \n\"21\"->\"28\" [style = \"solid\", style = \"solid\"] \n\"22\"->\"30\" [style = \"solid\", style = \"solid\"] \n\"31\"->\"33\" [style = \"solid\", style = \"solid\"] \n\"32\"->\"35\" [style = \"solid\", style = \"solid\"] \n\"33\"->\"37\" [style = \"solid\", style = \"solid\"] \n\"34\"->\"39\" [style = \"solid\", style = \"solid\"] \n\"35\"->\"41\" [style = \"solid\", style = \"solid\"] \n\"36\"->\"43\" [style = \"solid\", style = \"solid\"] \n\"37\"->\"45\" [style = \"solid\", style = \"solid\"] \n\"46\"->\"48\" [style = \"solid\", style = \"solid\"] \n\"47\"->\"50\" [style = \"solid\", style = \"solid\"] \n\"48\"->\"52\" [style = \"solid\", style = \"solid\"] \n\"49\"->\"54\" [style = \"solid\", style = \"solid\"] \n\"50\"->\"56\" [style = \"solid\", style = \"solid\"] \n\"51\"->\"58\" [style = \"solid\", style = \"solid\"] \n\"52\"->\"60\" [style = \"solid\", style = \"solid\"] \n\"61\"->\"63\" [style = \"solid\", style = \"solid\"] \n\"62\"->\"65\" [style = \"solid\", style = \"solid\"] \n\"63\"->\"67\" [style = \"solid\", style = \"solid\"] \n\"64\"->\"69\" [style = \"solid\", style = \"solid\"] \n\"65\"->\"71\" [style = \"solid\", style = \"solid\"] \n\"66\"->\"73\" [style = \"solid\", style = \"solid\"] \n\"67\"->\"75\" [style = \"solid\", style = \"solid\"] \n\"76\"->\"78\" [style = \"solid\", style = \"solid\"] \n\"77\"->\"80\" [style = \"solid\", style = \"solid\"] \n\"78\"->\"82\" [style = \"solid\", style = \"solid\"] \n\"79\"->\"84\" [style = \"solid\", style = \"solid\"] \n\"80\"->\"86\" [style = \"solid\", style = \"solid\"] \n\"81\"->\"88\" [style = \"solid\", style = \"solid\"] \n\"82\"->\"90\" [style = \"solid\", style = \"solid\"] \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+<p>Ensemble of the trees</p>
+<div id="htmlwidget-6a4f07a84709e793714c" style="width:960px;height:576px;" class="grViz html-widget"></div>
+<script type="application/json" data-for="htmlwidget-6a4f07a84709e793714c">{"x":{"diagram":"digraph {\n\ngraph [layout = \"dot\",\n       rankdir = \"LR\"]\n\nnode [color = \"DimGray\",\n      fillcolor = \"beige\",\n      style = \"filled\",\n      shape = \"rectangle\",\n      fontname = \"Helvetica\"]\n\nedge [color = \"DimGray\",\n     arrowsize = \"1.5\",\n     arrowhead = \"vee\",\n     fontname = \"Helvetica\"]\n\n  \"1\" [label = \"Average Weight (6455.592)\nNumber Mechanics ( 794.274)\nMiniatures Game ( 113.033)\nUncredited Designer (  53.462)\nYear Published (  56.741)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"2\" [label = \"Year Published (2310.965)\nRoll Spin And Move ( 153.359)\nMax Players (  50.114)\nUncredited Designer (  48.064)\nGames With Solitaire Rules ( 105.805)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"3\" [label = \"Year Published (1768.557)\nRoll Spin And Move ( 230.112)\nNumber Mechanics ( 162.461)\nWargame (  10.473)\nTime Per Player (  45.249)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"4\" [label = \"Uncredited Designer (309.524)\nAverage Weight (152.529)\nRoll Spin And Move (123.236)\nTime Per Player (145.221)\nMovies TV Radio Theme ( 67.436)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"5\" [label = \"Average Weight (237.619)\nYear Published (430.140)\nUnknown (  9.934)\nMissing Playtingtime ( 14.713)\nMax Players ( 28.725)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"6\" [label = \"Average Weight (733.395)\nYear Published (220.027)\nMagazine Strategy Tactics ( 23.971)\nMax Players (113.037)\nRio Grande Games ( 21.362)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"7\" [label = \"Time Per Player (282.170)\nAverage Weight (224.361)\nWargame (299.049)\nTrading ( 32.517)\nYear Published (103.772)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"8\" [label = \"Leaf (3.8189)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"9\" [label = \"Leaf (7.1451)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"10\" [label = \"Leaf (5.6128)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"11\" [label = \"Leaf (8.9043)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"12\" [label = \"Leaf (5.2766)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"13\" [label = \"Leaf (7.6391)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"14\" [label = \"Leaf (6.2569)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"15\" [label = \"Leaf (7.9866)\", fillcolor = \"#F5F5DC\", fontcolor = \"#000000\"] \n  \"1\"->\"2\" \n  \"2\"->\"4\" \n  \"3\"->\"6\" \n  \"4\"->\"8\" \n  \"5\"->\"10\" \n  \"6\"->\"12\" \n  \"7\"->\"14\" \n  \"1\"->\"3\" \n  \"2\"->\"5\" \n  \"3\"->\"7\" \n  \"4\"->\"9\" \n  \"5\"->\"11\" \n  \"6\"->\"13\" \n  \"7\"->\"15\" \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+</div>
+<div id="what-did-they-learn" class="section level2" number="2.1">
+<h2><span class="header-section-number">2.1</span> What did they learn?</h2>
+<div id="linear-models" class="section level3" number="2.1.1">
+<h3><span class="header-section-number">2.1.1</span> Linear Models</h3>
+<pre><code>## Warning: `cols` is now required when using unnest().
+## Please use `cols = c(tidied)`</code></pre>
+<pre><code>## Picking joint bandwidth of 0.000966</code></pre>
+<p><img src="create_visualizations_files/figure-html/get%20stuff%20from%20the%20linear%20models%20for%20average-1.png" width="960" /></p>
+<pre><code>## Warning: `cols` is now required when using unnest().
+## Please use `cols = c(tidied)`</code></pre>
+<pre><code>## Picking joint bandwidth of 0.00129</code></pre>
+<p><img src="create_visualizations_files/figure-html/get%20stuff%20from%20the%20linear%20models%20for%20usersrated-1.png" width="960" /></p>
+</div>
+<div id="xgbtree" class="section level3" number="2.1.2">
+<h3><span class="header-section-number">2.1.2</span> xgbTree</h3>
+<pre><code>## Warning: package &#39;fastshap&#39; was built under R version 4.1.1</code></pre>
+<pre><code>## [conflicted] Will prefer fastshap::explain over any other package</code></pre>
+<p><img src="create_visualizations_files/figure-html/examine%20the%20computed%20shapley%20values-1.png" width="960" /><img src="create_visualizations_files/figure-html/examine%20the%20computed%20shapley%20values-2.png" width="960" /></p>
+</div>
+</div>
+<div id="why-is-the-model-making-this-prediction" class="section level2" number="2.2">
+<h2><span class="header-section-number">2.2</span> Why is the model making this prediction?</h2>
+<p>Why does the model like a game such as Frosthaven? We’ll grab some more Shapley values to gain some insight into predictions for each outcome for each game. Above each graph we can see the model’s predictions vs the current value on BGG.</p>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20frosthaven-1.png" width="960" /></p>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20a%20game%20we%20got%20right-1.png" width="960" /></p>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20a%20game%20we%20got%20wrong-1.png" width="960" /><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20a%20game%20we%20got%20wrong-2.png" width="960" /><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20a%20game%20we%20got%20wrong-3.png" width="960" /></p>
+<div id="why-is-monopoly-bad" class="section level3" number="2.2.1">
+<h3><span class="header-section-number">2.2.1</span> Why is Monopoly bad?</h3>
+<p><img src="create_visualizations_files/figure-html/show%20shapley%20values%20for%20monopoly-1.png" width="960" /></p>
+<p>```</p>
+</div>
+</div>
+</div>
+
+
+
+</div>
+</div>
+
+</div>
+
+<script>
+
+// add bootstrap table styles to pandoc tables
+function bootstrapStylePandocTables() {
+  $('tr.odd').parent('tbody').parent('table').addClass('table table-condensed');
+}
+$(document).ready(function () {
+  bootstrapStylePandocTables();
+});
+
+
+</script>
+
+<!-- tabsets -->
+
+<script>
+$(document).ready(function () {
+  window.buildTabsets("TOC");
+});
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open');
+  });
+});
+</script>
+
+<!-- code folding -->
+
+<script>
+$(document).ready(function ()  {
+
+    // temporarily add toc-ignore selector to headers for the consistency with Pandoc
+    $('.unlisted.unnumbered').addClass('toc-ignore')
+
+    // move toc-ignore selectors from section div to header
+    $('div.section.toc-ignore')
+        .removeClass('toc-ignore')
+        .children('h1,h2,h3,h4,h5').addClass('toc-ignore');
+
+    // establish options
+    var options = {
+      selectors: "h1,h2,h3",
+      theme: "bootstrap3",
+      context: '.toc-content',
+      hashGenerator: function (text) {
+        return text.replace(/[.\\/?&!#<>]/g, '').replace(/\s/g, '_');
+      },
+      ignoreSelector: ".toc-ignore",
+      scrollTo: 0
+    };
+    options.showAndHide = true;
+    options.smoothScroll = true;
+
+    // tocify
+    var toc = $("#TOC").tocify(options).data("toc-tocify");
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>
