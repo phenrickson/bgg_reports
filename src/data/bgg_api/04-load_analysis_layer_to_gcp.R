@@ -193,78 +193,78 @@ game_artists =
                   game_id,
                   load_ts)
 
-# # load to analysis layer on gcp
-# # unreleased games
-# dbWriteTable(bigquerycon,
-#              name = "analysis_unreleased_games",
-#              append = T,
-#              value = unreleased_games)
-# 
-# # drop games
-# dbWriteTable(bigquerycon,
-#              name = "analysis_drop_games",
-#              append = T,
-#              value = drop_games)
-# 
-# # descriptions
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_descriptions",
-#              append = T,
-#              value = game_descriptions)
-# 
-# # images
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_images",
-#              append = T,
-#              value = game_images)
-# 
-# # categories
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_categories",
-#              append = T,
-#              value = game_categories)
-# 
-# # compilations
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_compilations",
-#              append = T,
-#              value = game_compilations)
-# 
-# # designers
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_designers",
-#              append = T,
-#              value = game_designers)
-# 
-# # families
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_families",
-#              append = T,
-#              value = game_families)
-# 
-# # implementations
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_implementations",
-#              append = T,
-#              value = game_implementations)
-# 
-# # publishers
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_publishers",
-#              append = T,
-#              value = game_publishers)
-# 
-# # artists
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_artists",
-#              append = T,
-#              value = game_artists)
-# 
-# # mechanics
-# dbWriteTable(bigquerycon,
-#              name = "analysis_game_mechanics",
-#              append = T,
-#              value = game_mechanics)
+# load to analysis layer
+# unreleased games
+dbWriteTable(bigquerycon,
+             name = "analysis_unreleased_games",
+             append = T,
+             value = unreleased_games)
+
+# drop games
+dbWriteTable(bigquerycon,
+             name = "analysis_drop_games",
+             append = T,
+             value = drop_games)
+
+# descriptions
+dbWriteTable(bigquerycon,
+             name = "analysis_game_descriptions",
+             append = T,
+             value = game_descriptions)
+
+# images
+dbWriteTable(bigquerycon,
+             name = "analysis_game_images",
+             append = T,
+             value = game_images)
+
+# categories
+dbWriteTable(bigquerycon,
+             name = "analysis_game_categories",
+             append = T,
+             value = game_categories)
+
+# compilations
+dbWriteTable(bigquerycon,
+             name = "analysis_game_compilations",
+             append = T,
+             value = game_compilations)
+
+# designers
+dbWriteTable(bigquerycon,
+             name = "analysis_game_designers",
+             append = T,
+             value = game_designers)
+
+# families
+dbWriteTable(bigquerycon,
+             name = "analysis_game_families",
+             append = T,
+             value = game_families)
+
+# implementations
+dbWriteTable(bigquerycon,
+             name = "analysis_game_implementations",
+             append = T,
+             value = game_implementations)
+
+# publishers
+dbWriteTable(bigquerycon,
+             name = "analysis_game_publishers",
+             append = T,
+             value = game_publishers)
+
+# artists
+dbWriteTable(bigquerycon,
+             name = "analysis_game_artists",
+             append = T,
+             value = game_artists)
+
+# mechanics
+dbWriteTable(bigquerycon,
+             name = "analysis_game_mechanics",
+             append = T,
+             value = game_mechanics)
 
 
 # save a copy of these tables for local use as an .Rdata object
