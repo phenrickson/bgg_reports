@@ -16,11 +16,11 @@ require(future)
 require(butcher)
 
 # functions for connecting to gcp
-source(here("functions", "connect_to_gcp.R"))
+source(here("src", "helpers", "connect_to_gcp.R"))
 
 # functions for submitting a game id to bgg api
 # submit game ids to 'get_bgg_game_data' function
-source(here("scripts","bgg_api", "bgg_api_functions.R"))
+source(here("src", "data","bgg_api", "bgg_api_functions.R"))
 
 # get bgg ids
 # get most recent time game id appeared
