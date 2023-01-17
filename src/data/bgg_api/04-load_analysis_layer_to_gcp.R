@@ -65,7 +65,7 @@ message("creating additional tables..")
 # games that have not been released
 unreleased_games = 
         game_links %>%
-        filter(value == 'Admin: Unreleased Games') %>%
+        filter(value == 'Admin: Unreleased Games' | value == 'Upcoming Releases') %>%
         transmute(
                 type,
                 value,
@@ -95,9 +95,13 @@ drop_games =
                         c('Expansion for Base-game',
                           'Fan Expansion',
                           '(Looking for a publisher)') |
-                        # games where there's an admin note, as this usually indicates a data quality problem
-                        grepl("Admin:", value) |
-                        # missingness on yearpublished 
+                        # # games where there's an admin note, as this usually indicates a data quality problem
+                        grepl("Admin: Book entries that should be split", value) |
+                        grepl("Admin: Cancelled Games", value) |
+                        grepl("Admin: Miscellaneous Placeholder", value) |
+                        grepl("Admin: Outside the Scope of BGG", value) |
+                        grepl("Admin: Test Family for revision", value) |
+                    #    missingness on yearpublished
                         is.na(yearpublished) |
                         is.na(name)
         ) %>%
