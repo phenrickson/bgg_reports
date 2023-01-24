@@ -1,5 +1,5 @@
 ---
-title: "Examining BGG Mechanics"
+title: "Examining BGG Families"
 author: Phil Henrickson
 params:
         train_year: 2020
@@ -64,17 +64,18 @@ This notebook provides some basic exploratory analysis of games on boardgamegeek
 
 For this write up, I examine games published through `r train_year` that have achieved at least `r min_ratings` user ratings by the time of writing.[^ I have additionally excluded some games that were cancelled or never released, or have data quality issues with their profiles on BGG.]
 
-What kinds of mechanics are there on BGG and how do they relate to community ratings?
+What are the families of games on BGG and how do they relate to community ratings?
 
-# Mechanics
+# Families
 
-## Top Mechanics by BGG Outcome
+## Most Frequent
 
-What are the most frequent mechanics on BGG? How are games with each mechanic typically rated? 
+What are the most frequent families on BGG?
 
-```{r most common mechanics, warning=F, message=F}
+```{r most common families, warning=F, message=F}
 
-game_mechanics %>%
+game_families %>%
+        mutate(value = family_value) %>%
         group_by(type, id, value) %>%
         summarize(games = n_distinct(game_id),
                   .groups = 'drop') %>%
@@ -93,27 +94,69 @@ game_mechanics %>%
         facet_wrap(. ~ page,
                    scales = "free_y")+
         scale_x_continuous(breaks = scales::pretty_breaks(n=3))+
-        ylab("Mechanic")+
+        ylab("Family")+
         xlab("Number of Games")
         
 
 ```
 
-I'll then plot the distribution of games with the 25 most frequent mechanics. What types of mechanics are typically associated with heavier games? What mechanic is the highest rated (on average)?
+For BGG *family* variables, we can consider the hierarchy 
 
-```{r plot mechanics}
+```{r top within each family}
 
-plot_games_by_categorical(game_mechanics,
+game_families %>%
+        filter(family_type %in%
+                       c('Series',
+                         'Theme',
+                         'Country',
+                         'Mechanism',
+                         'Category',
+                         'Components',
+                         'Animals',
+                         'Game',
+                         'Sports')) %>%
+        group_by(family_type, id, family_value) %>%
+        summarize(games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        group_by(family_type) %>%
+        slice_max(games, n = 5, with_ties=F) %>%
+        ungroup() %>%
+        mutate(family_value = abbreviate(family_value, minlength=25)) %>%
+        ggplot(aes(y=tidytext::reorder_within(family_value, games, family_type),
+                   x=games))+
+        geom_col()+
+        theme_phil()+
+        theme(axis.text.y = element_text(size = 8),
+              strip.text.x = element_text(size = 6))+
+        facet_wrap(family_type ~.,
+                   scales = "free")+
+        ylab("Family")+
+        xlab("Number of Games")+
+        scale_y_reordered()+
+        scale_x_continuous(breaks = scales::pretty_breaks(n=3))
+
+```
+
+
+## Families by BGG Outcome
+
+How are games within each family typically rated?
+
+I'll then plot the distribution of games with the 25 most frequent families. What types of families are typically associated with heavier games? What family is the highest rated (on average)?
+
+```{r plot families}
+
+plot_games_by_categorical(game_families,
                              25)
 
 ```
 
-Finally, the following interactive table displays the mean of each BGG outcome by mechanic. 
+Finally, the following (interactive) table displays the mean of each BGG outcome by family. Use the filters below the column names to filter through the table by family or number of games. 
 
 ```{r make summary table}
 
 # summarize data
-summary_data = game_mechanics %>%
+summary_data = game_families %>%
         summarize_games_by_categorical()
 
 
@@ -128,13 +171,13 @@ summary_data %>%
 
 ```
 
-## Combinations of Mechanics
+## Combinations of Families
  
-What are the most frequent pairings of mechanics in games on BGG? The following visualization displays an upset plot of the most frequent combinations of mechanics used in games.
+What are the most frequent pairings of families in games on BGG? The following visualization displays an upset plot of the most frequent combinations of families used in games.
 
 ```{r upset plot}
 
-upset = game_mechanics %>%
+upset = game_families %>%
         filter(game_id %in% tidy_games$game_id) %>%
         select(type, value, game_id) %>%
         mutate(has_type = 1) %>%
@@ -149,7 +192,7 @@ upset = game_mechanics %>%
 
 ```
 
-The bar chart on the bottom left indicates the number of games with a specific mechanic. The bar chart on the top indicates the number of games with a **combination** of mechanics. That is, the most common mechanic in games is Dice-Rolling, and there are many games in which Dice-Rolling is the only mechanic. The most frequent combination of mechanics is Simulation + Hexagon Grid + Dice-Rolling.
+The bar chart on the bottom left indicates the number of games in each family. The bar chart on the top indicates the number of games with a **combination** of families. 
 
 ```{r print upset, fig.height = 8}
 

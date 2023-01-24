@@ -14,7 +14,7 @@ source(here::here("src", "helpers", "exploratory_setup.R"))
 
 ```{r load functions for categorical, include=F} 
 
-source(here::here("src", "functions", "explore_categorical_functions.R"))
+source(here::here("src", "functions", "categorical_functions.R"))
 
 ```
 
@@ -51,8 +51,6 @@ tidy_games =
 ```
 
 ```{r functions and captions}
-
-source(here::here("src", "functions", "explore_categorical_functions.R"))
 
 # caption
 my_caption = 

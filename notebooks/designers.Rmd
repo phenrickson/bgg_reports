@@ -14,7 +14,7 @@ source(here::here("src", "helpers", "exploratory_setup.R"))
 
 ```{r load functions for categorical, include=F} 
 
-source(here::here("src", "functions", "explore_categorical_functions.R"))
+source(here::here("src", "functions", "categorical_functions.R"))
 
 ```
 
@@ -51,8 +51,6 @@ tidy_games =
 ```
 
 ```{r functions and captions}
-
-source(here::here("src", "functions", "explore_categorical_functions.R"))
 
 # caption
 my_caption = 
@@ -169,7 +167,7 @@ dat_prepped = dat %>%
                   name, 
                   yearpublished, 
                   bayesaverage,
-                  usersrated,
+                  usersrated = log(usersrated),
                   averageweight, 
                   average, 
                   #   display_value,
@@ -185,15 +183,19 @@ glmnet_reg_mod = parsnip::linear_reg(mixture = 0.5,
                                      penalty = tune::tune(),
                                      engine = 'glmnet')
 
+# stan
+stan_reg_mod = parsnip::linear_reg(engine = "stan")
+
 # specify grid for tuning
 glmnet_grid <- tibble(penalty = 10^seq(-3, -1, 
                                        length.out = 20))
 
 # poisson regression
-pois_reg_mod = parsnip::poisson_reg(mode = "regression",
-                                    mixture = 0.5,
-                                    penalty = tune::tune(),
-                                    engine = 'glmnet')
+# library(poissonreg)
+# pois_reg_mod = parsnip::poisson_reg(mode = "regression",
+#                                     mixture = 0.5,
+#                                     penalty = tune::tune(),
+#                                     engine = 'glmnet')
 
 # folds for tuning
 set.seed(1999)
@@ -247,7 +249,7 @@ wflow_usersrated = workflow() %>%
         add_recipe(rec %>%
                            update_role(usersrated, 
                                        new_role = "outcome")) %>%
-        add_model(pois_reg_mod)
+        add_model(glmnet_reg_mod)
 
 # fit at nested level
 wflow_fits = dat_prepped %>%
@@ -297,75 +299,74 @@ wflow_fits = dat_prepped %>%
 
 ```
 
-```{r extract coefficients, layout="l-body-outset"}
+```{r extract coefficients and make table, layout="l-body-outset"}
 
+seq_average = seq(-2, 2, .05)
+seq_usersrated = seq(-1, 50, .5)
 
-# seq_average = seq(-2, 2, .05)
-# seq_usersrated = seq(-1, 50, .5)
-# 
-# wflow_fits %>%
-#         select(outcome, coefs) %>%
-#         unnest() %>%
-#         filter(!grepl("yearpublished|averageweight|Intercept", term)) %>%
-#         # mutate(estimate = case_when(outcome == 'usersrated' ~ (exp(estimate)-1)*100,
-#         #                             TRUE ~ estimate)) %>%
-#         mutate_if(is.numeric, round, 3) %>%
-#         # get display name
-#         arrange(desc(estimate)) %>%
-#         left_join(., 
-#                   dat %>%
-#                           transmute(term = value,
-#                                     display_value,
-#                                     num_games) %>%
-#                           distinct,
-#                   by = c("term")) %>%
-#         filter(!is.na(display_value)) %>%
-#         mutate(term = case_when(is.na(display_value )~ term,
-#                                 TRUE ~ display_value)) %>%
-#         select(num_games, outcome, term, estimate) %>%
-#         # pivot
-#         pivot_wider(names_from = c("outcome"),
-#                     values_from = c("estimate")) %>%
-#         # round usersrated
-#         mutate(usersrated = round(usersrated, 2)) %>%
-#         arrange(desc(num_games)) %>%
-#         transmute(Designer = term,
-#                   Games = num_games,
-#                   Average = average,
-#                   Ratings = usersrated) %>%
-#         DT::datatable(escape=F,
-#                       rownames = F,
-#                       extensions = c('Responsive'),
-#                       #    caption = 'ZoomInfo Companies - Client Probabilities by COE',
-#                       filter = list(position = 'top'),
-#                       options = list(pageLength = 15,
-#                                      initComplete = htmlwidgets::JS(
-#                                              "function(settings, json) {",
-#                                              paste0("$(this.api().table().container()).css({'font-size': '", '8pt', "'});"),
-#                                              "}"),
-#                                      scrollX=F,
-#                                      columnDefs = list(
-#                                              list(className = 'dt-center',
-#                                                   visible=T,
-#                                                   targets=c("Designer",
-#                                                             "Games",
-#                                                             "Average",
-#                                                             "Ratings"))
-#                                      )
-#                       )
-#         ) %>%
-#         # usersrated
-#         formatStyle(c(
-#                 "Ratings"),
-#                 #     blue = 'white',
-#                 backgroundColor = styleInterval(seq_usersrated,
-#                                                 blueRampSeq(length(seq_usersrated)+1))) %>%
-#         # average
-#         formatStyle(c(
-#                 "Average"),
-#                 #     blue = 'white',
-#                 backgroundColor = styleInterval(seq_average,
-#                                                 colorRampDiv(length(seq_average)+1)))
+wflow_fits %>%
+        select(outcome, coefs) %>%
+        unnest() %>%
+        filter(!grepl("yearpublished|averageweight|Intercept", term)) %>%
+        mutate(estimate = case_when(outcome == 'usersrated' ~ (exp(estimate)-1),
+                                    TRUE ~ estimate)) %>%
+        mutate_if(is.numeric, round, 3) %>%
+        # get display name
+        arrange(desc(estimate)) %>%
+        left_join(.,
+                  dat %>%
+                          transmute(term = value,
+                                    display_value,
+                                    num_games) %>%
+                          distinct,
+                  by = c("term")) %>%
+        filter(!is.na(display_value)) %>%
+        mutate(term = case_when(is.na(display_value )~ term,
+                                TRUE ~ display_value)) %>%
+        select(num_games, outcome, term, estimate) %>%
+        # pivot
+        pivot_wider(names_from = c("outcome"),
+                    values_from = c("estimate")) %>%
+        # round usersrated
+        mutate(usersrated = round(usersrated, 2)) %>%
+        arrange(desc(num_games)) %>%
+        transmute(Designer = term,
+                  Games = num_games,
+                  Average = average,
+                  Ratings = usersrated) %>%
+        DT::datatable(escape=F,
+                      rownames = F,
+                      extensions = c('Responsive'),
+                      #    caption = 'ZoomInfo Companies - Client Probabilities by COE',
+                      filter = list(position = 'top'),
+                      options = list(pageLength = 15,
+                                     initComplete = htmlwidgets::JS(
+                                             "function(settings, json) {",
+                                             paste0("$(this.api().table().container()).css({'font-size': '", '8pt', "'});"),
+                                             "}"),
+                                     scrollX=F,
+                                     columnDefs = list(
+                                             list(className = 'dt-center',
+                                                  visible=T,
+                                                  targets=c("Designer",
+                                                            "Games",
+                                                            "Average",
+                                                            "Ratings"))
+                                     )
+                      )
+        ) %>%
+        # usersrated
+        formatStyle(c(
+                "Ratings"),
+                #     blue = 'white',
+                backgroundColor = styleInterval(seq_usersrated,
+                                                blueRampSeq(length(seq_usersrated)+1))) %>%
+        # average
+        formatStyle(c(
+                "Average"),
+                #     blue = 'white',
+                backgroundColor = styleInterval(seq_average,
+                                                colorRampDiv(length(seq_average)+1)))
 
 ```
 
