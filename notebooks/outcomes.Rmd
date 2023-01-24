@@ -1,0 +1,350 @@
+---
+title: "Examining BGG Outcomes"
+author: Phil Henrickson
+params:
+        train_year: 2020
+        min_ratings: 50
+---
+
+```{r setup, inclue=F, results = 'hide', message=F, warning=F}
+
+source(here::here("src", "helpers", "exploratory_setup.R"))
+
+```
+
+```{r create tidy games, include=F}
+
+# set minimum ratings
+min_ratings = params$min_ratings
+
+# rrain year
+train_year = params$train_year
+
+# remove unreleased and problem games
+tidy_games =
+        analysis_games %>%
+        # remove unreleased and problem games
+        filter(!(game_id %in% c(
+                unreleased_games$game_id,
+                drop_games$game_id))
+        ) %>%
+        # filter out games with missingness on yearpublished
+        filter(!is.na(yearpublished)) %>%
+        # filter out games with missingness on average weight
+        filter(!is.na(averageweight) & averageweight!=0) %>%
+        # filter our kickstarter editions and big box editions
+        filter(!(grepl("kickstarter|big box|mega box|megabox", name))) %>%
+        # filter to games released prior to current year
+        filter(yearpublished < year(Sys.Date())) %>%
+        # filter to games with at least X votes
+        filter(usersrated >= min_ratings) %>%
+        # set yearpublished to numeric
+        mutate(yearpublished = as.numeric(yearpublished))
+
+```
+
+```{r functions and captions}
+
+# function for names
+tidy_names_func = function(x, log=T) {
+        
+        x = gsub("\\baverage\\b", "average rating", x)
+        x = gsub("\\baverageweight\\b", "average weight", x)
+        x = gsub("\\bbayesaverage\\b", "geek rating", x)
+        
+        if (log == T) {
+                x = gsub("\\busersrated\\b", "user ratings (logged)", x)
+        } else {
+                x = gsub("\\busersrated\\b", "user ratings", x)
+        }
+        
+        return(x)
+}
+
+# caption
+my_caption = 
+        list(labs(caption = paste(paste("data from boardgamegeek.com as of", max(as.Date(tidy_games$load_ts))),
+                                  #    paste("analysis by phil henrickson"),
+                                  paste("phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
+
+```
+
+This notebook provides some basic exploratory analysis of games on boardgamegeek (BGG) in support of my work [predicting ratings for upcoming games] and [predicting games for individual users]. In particular, I examine four different community outcomes for games: average weight rating (complexity), number of user ratings, average user rating, and geek rating (a combination of user ratings and the average).[^ For this write up, I examine games published through `r train_year` that have achieved at least `r min_ratings` user ratings by the time of writing. I have additionally excluded some games that were cancelled or never released, or have data quality issues with their profiles on BGG.]
+
+# BGG Ratings
+
+The data I'm examining is at the game level, where I observe the BGG community's aggregated ratings for individual games. That is, I do not have data on the underlying ratings for games, only the average, standard deviation, or sum of the distribution
+
+```{r distributions of outcomes}
+
+tidy_games %>%
+        filter(yearpublished <= train_year) %>%
+        transmute(game_id,
+                  name,
+                  yearpublished,
+                  averageweight,
+                  average,
+                  bayesaverage,
+                  usersrated = log(usersrated)) %>%
+        pivot_longer(names_to = "outcome",
+                     values_to = "value",
+                     cols = c("averageweight", "average", "bayesaverage", "usersrated")) %>%
+        mutate(outcome = tidy_names_func(outcome)) %>%
+        ggplot(aes(x=value))+
+        # geom_density(alpha = 0.25,
+        #              fill = 'deepskyblue1')+
+        geom_histogram(bins = 80)+
+        facet_wrap(outcome ~.,
+                   ncol = 2,
+                   scales = "free")+
+        theme_minimal()+
+        my_caption+
+        xlab("")
+
+```
+
+The average rating and the number of user ratings is easy enough to understand, but the distributions for average weight and the geek rating are a bit wonky. 
+
+## Average Weight (Complexity)
+
+Average weight indicates the perceived complexity of the game (1 = simple, 5 = complex). It has large spikes at 1, 2, and 3 due to users gravitating towards those ratings. Fewer users rate game complexity than those that rate how good games are, so this can often be a fairly noisy estimate of a game's complexity.
+
+```{r averageweight and numweights}
+
+tidy_games %>%
+        filter(yearpublished <= train_year) %>%
+        ggplot(aes(x=averageweight,
+                   y=numweights))+
+        geom_point(alpha = 0.2,
+                   position = position_jitternormal(sd_y = 0.01))+
+        scale_y_log10()+
+        theme_phil()+
+        xlab("average weight")
+
+```
+
+## The Geek Rating
+
+The geek rating is designed to capture games that are both highly rated and popular, meaning it is a function of the number user ratings and the average rating. BGG uses Bayesian averaging to prevent games with relatively few votes from moving up the Geek list; every game starts with ~2k votes at 5.5 (hence the large spike at 5.5), so the game's geek rating will only move from 5.5 as it receives enough votes.
+
+```{r show geek rating with color}
+
+library(ggridges)
+
+tidy_games %>%
+        filter(yearpublished <= train_year) %>%
+        ggplot(aes(x=bayesaverage, 
+                   fill = bayesaverage))+
+        stat_density()+
+        theme_phil()+
+        xlab("geek rating")
+
+```
+
+In order to get a high geek rating, a game need to both be well rated (a high average) *and* have a high enough number of user ratings. We can get a sense of of this by plotting games via their user ratings and their average, using color to indicate their geek rating. Notice where games with high geek ratings reside - a high average rating with lots of user ratings. [I have examined the geek rating in greater detail elsewhere, as I argue it doesn't place a high enough weight on popularity]().
+
+```{r plot games by average and user ratings}
+
+tidy_games %>%
+        ggplot(., aes(x=average,
+                      label = name,
+                      color = bayesaverage,
+                      y = usersrated))+
+        geom_point(alpha = 0.3)+
+        scale_y_log10()+
+        # geom_text(check_overlap = T,
+        #           vjust = -1,
+        #           size = 2)+
+        scale_color_gradient2(high = "deepskyblue1",
+                              low = "red",
+                              mid = "grey80",
+                              limits = c(4, 8),
+                              oob = scales::squish,
+                              midpoint = 6)+
+        theme_phil()+
+        theme(legend.position = 'top',
+              legend.title = element_text())+
+        theme(axis.text = element_text())+
+        guides(color = guide_colorbar(barwidth = 12,
+                                      barheight=0.35,
+                                      title = 'geek rating',
+                                      title.position = 'top'))+
+        xlab("average rating")+
+        ylab("users rated (logged)")+
+        my_caption
+
+
+```
+
+## Relationships Between Outcomes
+
+Each of these BGG outcomes (average weight, average, user ratings) is related to each other in some way, which is important to keep in mind as we think about modeling these outcomes. The average weight tends to be highly correlated with the average rating, while not being correlated with the number of user ratings. The geek rating is a function of the average and user ratings, which means it is also then correlated with the average weight.
+
+```{r view these by each other by game, fig.cap = 'Relationship between BGG community ratings'}
+
+set.seed(1)
+tidy_games %>%
+        filter(!is.na(averageweight)) %>%
+        filter(yearpublished <= train_year) %>%
+        select(game_id, averageweight, average, bayesaverage, usersrated) %>%
+        mutate(usersrated = log(usersrated)) %>%
+        na.omit() %>%
+        set_names(., tidy_names_func(names(.))) %>%
+        ggplot(aes(x=.panel_x,
+                   y=.panel_y))+
+        geom_autopoint(alpha = 0.05,
+                       size = 0.5)+
+        geom_autodensity(alpha = 0.6)+
+        #   geom_smooth()+
+        facet_matrix(vars(-game_id), layer.diag = 2, 
+                     #  layer.lower = 3, 
+                     grid.y.diag = F)+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(),
+              strip.text = element_text(size = 8))+
+        my_caption
+
+```
+
+Why do we see these relationships?
+
+It's partially just a function of the different types of games on BGG, which we can see if we break this same visualization out by game category[^ Games can fall into multiple categories, where a game is considered both a strategy game and a wargame. For this visualization, I assign games to one category each with the priority order of wargame, strategy, family, abstract, party. Anything without a category is considered other.]. 
+
+```{r repeat visualiation with categories}
+
+set.seed(1)
+tidy_games %>%
+        filter(!is.na(averageweight)) %>%
+        filter(yearpublished <= train_year) %>%
+        transmute(game_id, 
+                  averageweight,
+                  average,
+                  bayesaverage,
+                  usersrated = log(usersrated),
+                  category = case_when(!is.na(rank_wargame) ~ 'wargame',
+                                       !is.na(rank_strategy) ~ 'strategy',
+                                       !is.na(rank_family) ~ 'family',
+                                       !is.na(rank_abstract) ~ 'abstract',
+                                       !is.na(rank_party) ~ 'party',
+                                       TRUE ~ 'other')) %>%
+        set_names(., tidy_names_func(names(.))) %>%
+        ggplot(aes(x=.panel_x,
+                   y=.panel_y,
+                   fill = category,
+                   color = category))+
+        geom_autopoint(alpha = 0.5,
+                       size = 0.5)+
+        geom_autodensity(alpha = 0.6, position = 'identity')+
+        # geom_smooth()+
+        facet_matrix(vars(-game_id, -category), layer.diag = 2, grid.y.diag = F)+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(),
+              strip.text = element_text(size = 8))+
+        my_caption+
+        scale_color_brewer(palette = 'Set2')+
+        scale_fill_brewer(palette = 'Set2')
+
+```
+
+Wargames tend to have high complexity, high averages and a low numbers of ratings (presumably due to a dedicated wargame following on BGG). Party games are and family games tend are low complexity and lower average ratings, but can achieve a higher geek rating due to attracting more ratings.
+
+```{r show distributions}
+
+tidy_games %>%
+        filter(!is.na(averageweight)) %>%
+        filter(yearpublished <= train_year) %>%
+        transmute(game_id, 
+                  averageweight,
+                  average,
+                  bayesaverage,
+                  usersrated = log(usersrated),
+                  category = case_when(!is.na(rank_wargame) ~ 'wargame',
+                                       !is.na(rank_strategy) ~ 'strategy',
+                                       !is.na(rank_family) ~ 'family',
+                                       !is.na(rank_abstract) ~ 'abstract',
+                                       !is.na(rank_party) ~ 'party',
+                                       TRUE ~ 'other')) %>%
+        set_names(., tidy_names_func(names(.))) %>%
+        ggplot(aes(x=.panel_x,
+                   y=.panel_y,
+                   fill = category,
+                   color = category))+
+        geom_autopoint(alpha = 0.5,
+                       size = 0.5)+
+        facet_matrix(vars(category),
+                     vars(-game_id, -category),
+                     grid.y.diag = F)+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(),
+              strip.text = element_text(size = 8))+
+        my_caption+
+        scale_color_brewer(palette = 'Set2')+
+        scale_fill_brewer(palette = 'Set2')+
+        guides(color = 'none',
+               fill = 'none')
+
+
+```
+
+
+## Over Time
+
+How have the BGG community's ratings changed over time? BGG has data on the year in which games were published, with some games published as far as back 3500 BC[^ Senet takes the prize for oldest game, followed by Marbles and Go].
+
+Filtering to games published since 1950, we can examine the relationship between year published and each outcome. Games published in the 80s had a bit of higher average weight on average than games published recently. The average rating of games has increased in recent years.
+
+```{r examine by yearpublished, warning=T}
+
+set.seed(1)
+tidy_games %>%
+        filter(!is.na(averageweight)) %>%
+        filter(yearpublished > 1950 & yearpublished <= train_year) %>%
+        transmute(game_id, 
+                  yearpublished,
+                  averageweight,
+                  average,
+                  bayesaverage,
+                  usersrated = log(usersrated)) %>%
+        #    filter(yearpublished > 1900) %>%
+        set_names(., tidy_names_func(names(.))) %>%
+        ggplot(aes(x=.panel_x,
+                   y=.panel_y))+
+        geom_autopoint(alpha = 0.05,
+                       size = 0.5)+
+        geom_smooth(
+                method = lm,
+                formula = y ~ splines::ns(x, df = 9),
+                color = "blue",
+                se = F
+        )+
+        facet_matrix(vars(-game_id, -yearpublished),
+                     vars(yearpublished),
+                     grid.y.diag = F)+
+        theme_bw()+
+        theme(panel.grid.major = element_blank(),
+              strip.text = element_text(size = 8))+
+        my_caption+
+        scale_color_brewer(palette = 'Set2')+
+        scale_fill_brewer(palette = 'Set2')+
+        guides(color = 'none',
+               fill = 'none')
+
+```
+
+More and more games are being published ever year[^ This visualization shows all games published, as opposed to only those that have achieved a minimum number of ratings.] There has been an explosion in the number of new releases in recent years, with many games being published that do not receive many votes and the potential for a higher average score (though a lower geek rating). From this, we can expect that models predicting the average  will exhibit a strong relationship with time.
+
+```{r games by year}
+
+analysis_games %>%
+        filter(yearpublished > 1950 & yearpublished<=train_year) %>%
+        group_by(yearpublished) %>%
+        summarize(num_games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        ggplot(aes(x=yearpublished,
+                   y=num_games))+
+        geom_col()+
+        theme_phil()+
+        my_caption
+
+```
+

@@ -1,0 +1,164 @@
+---
+title: "Examining BGG Mechanics"
+author: Phil Henrickson
+params:
+        train_year: 2020
+        min_ratings: 50
+---
+
+```{r setup, inclue=F, results = 'hide', message=F, warning=F}
+
+source(here::here("src", "helpers", "exploratory_setup.R"))
+
+```
+
+```{r load functions for categorical, include=F} 
+
+source(here::here("src", "functions", "explore_categorical_functions.R"))
+
+```
+
+
+```{r create tidy games, include=F}
+
+# set minimum ratings
+min_ratings = params$min_ratings
+
+# train year
+train_year = params$train_year
+
+# remove unreleased and problem games
+tidy_games =
+        analysis_games %>%
+        # remove unreleased and problem games
+        filter(!(game_id %in% c(
+                unreleased_games$game_id,
+                drop_games$game_id))
+        ) %>%
+        # filter out games with missingness on yearpublished
+        filter(!is.na(yearpublished)) %>%
+        # filter out games with missingness on average weight
+        filter(!is.na(averageweight) & averageweight!=0) %>%
+        # filter our kickstarter editions and big box editions
+        filter(!(grepl("kickstarter|big box|mega box|megabox", name))) %>%
+        # filter to games released prior to current year
+        filter(yearpublished < year(Sys.Date())) %>%
+        # filter to games with at least X votes
+        filter(usersrated >= min_ratings) %>%
+        # set yearpublished to numeric
+        mutate(yearpublished = as.numeric(yearpublished))
+
+```
+
+```{r functions and captions}
+
+source(here::here("src", "functions", "explore_categorical_functions.R"))
+
+# caption
+my_caption = 
+        list(labs(caption = paste(paste("data from boardgamegeek.com as of", max(as.Date(tidy_games$load_ts))),
+                                  #    paste("analysis by phil henrickson"),
+                                  paste("phenrickson.github.io/data-analysis-paralysis/boardgames.html"), sep="\n")))
+
+```
+
+This notebook provides some basic exploratory analysis of games on boardgamegeek (BGG) in support of my work [predicting ratings for upcoming games] and [predicting games for individual users]. 
+
+For this write up, I examine games published through `r train_year` that have achieved at least `r min_ratings` user ratings by the time of writing.[^ I have additionally excluded some games that were cancelled or never released, or have data quality issues with their profiles on BGG.]
+
+What kinds of mechanics are there on BGG and how do they relate to community ratings?
+
+# Mechanics
+
+## Top Mechanics by BGG Outcome
+
+What are the most frequent mechanics on BGG? How are games with each mechanic typically rated? 
+
+```{r most common mechanics, warning=F, message=F}
+
+game_mechanics %>%
+        group_by(type, id, value) %>%
+        summarize(games = n_distinct(game_id),
+                  .groups = 'drop') %>%
+        slice_max(games, n = 50, with_ties=F) %>%
+        arrange(desc(games)) %>%
+        mutate(rank = row_number()) %>%
+        mutate(page = case_when(rank %in% seq(1, 25) ~ "1-25",
+                                rank %in% seq(26, 50) ~ "26-50")) %>%
+        mutate(value = abbreviate(value, minlength=25)) %>%
+        ggplot(aes(y=reorder(value,games),
+                   x=games))+
+        geom_col()+
+        theme_phil()+
+        theme(axis.text.y = element_text(size = 8),
+              strip.text.x = element_text(size = 6))+
+        facet_wrap(. ~ page,
+                   scales = "free_y")+
+        scale_x_continuous(breaks = scales::pretty_breaks(n=3))+
+        ylab("Mechanic")+
+        xlab("Number of Games")
+        
+
+```
+
+I'll then plot the distribution of games with the 25 most frequent mechanics. What types of mechanics are typically associated with heavier games? What mechanic is the highest rated (on average)?
+
+```{r plot mechanics}
+
+plot_games_by_categorical(game_mechanics,
+                             25)
+
+```
+
+Finally, the following interactive table displays the mean of each BGG outcome by mechanic. 
+
+```{r make summary table}
+
+# summarize data
+summary_data = game_mechanics %>%
+        summarize_games_by_categorical()
+
+
+# color gradients
+colorRampDiv = colorRampPalette(c("red", "white", "lightskyblue1"))
+blueRampSeq = colorRampPalette(c("white", "skyblue1"))
+redRampSeq = colorRampPalette(c("white", "orange"))
+
+# generate table
+summary_data %>%
+        make_categorical_summary_table()
+
+```
+
+## Combinations of Mechanics
+ 
+What are the most frequent pairings of mechanics in games on BGG? The following visualization displays an upset plot of the most frequent combinations of mechanics used in games.
+
+```{r upset plot}
+
+upset = game_mechanics %>%
+        filter(game_id %in% tidy_games$game_id) %>%
+        select(type, value, game_id) %>%
+        mutate(has_type = 1) %>%
+        pivot_wider(names_from = value, 
+                    values_from = has_type,
+                    values_fill = list(has_type = 0)) %>%
+        as.data.frame() %>%
+        UpSetR::upset(nsets = 15,
+                      keep.order = T,
+                      order.by = c("freq"),
+                      mb.ratio = c(0.6, 0.4))
+
+```
+
+The bar chart on the bottom left indicates the number of games with a specific mechanic. The bar chart on the top indicates the number of games with a **combination** of mechanics. That is, the most common mechanic in games is Dice-Rolling, and there are many games in which Dice-Rolling is the only mechanic. The most frequent combination of mechanics is Simulation + Hexagon Grid + Dice-Rolling.
+
+```{r print upset, fig.height = 8}
+
+print(suppressMessages({
+        upset
+}))
+
+```
+
+
