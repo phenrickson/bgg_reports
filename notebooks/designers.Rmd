@@ -40,7 +40,7 @@ tidy_games =
         # filter out games with missingness on average weight
         filter(!is.na(averageweight) & averageweight!=0) %>%
         # filter our kickstarter editions and big box editions
-        filter(!(grepl("kickstarter|big box|mega box|megabox", name))) %>%
+      #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
         # filter to games released prior to current year
         filter(yearpublished < year(Sys.Date())) %>%
         # filter to games with at least X votes
@@ -139,7 +139,7 @@ Which designers have the largest effect on a game's average? User ratings?
 
 We could simply look at the games published by each designer and then take their average rating/average number of user ratings. However, this doesn't account for the fact that some designers design more complex games than others, or that recently published games tend to have higher averages. 
 
-To get an estimate of each designer's partial effect on an outcome, I run penalized regressions of the BGG average/usersrated on dummies for individual game designers along with the game's weight and effects for year published [^ I handle time effects in two different ways, first creating an indicator for games published before 1900, then fitting cubic splines to the truncated publishing range of years 1900 to present].
+To get an estimate of each designer's partial effect on an outcome, I run penalized regressions lasso) of the BGG average/usersrated on dummies for individual game designers along with the game's weight and effects for year published [^ I handle time effects in two different ways, first creating an indicator for games published before 1900, then fitting cubic splines to the truncated publishing range of years 1900 to present].
 
 $$ Average = \beta_0 + Weight * \beta_1 + Designer_i * \beta_2 + Designer_j * \beta_3 * Designer_k ... Designer_n * \beta_n + YearPublished $$
 ```{r partial effects of designers, include=F}
@@ -179,12 +179,9 @@ dat_prepped = dat %>%
 
 # model
 # penalized regression
-glmnet_reg_mod = parsnip::linear_reg(mixture = 0.5, 
+glmnet_reg_mod = parsnip::linear_reg(mixture = 1, 
                                      penalty = tune::tune(),
                                      engine = 'glmnet')
-
-# stan
-stan_reg_mod = parsnip::linear_reg(engine = "stan")
 
 # specify grid for tuning
 glmnet_grid <- tibble(penalty = 10^seq(-3, -1, 
@@ -260,7 +257,7 @@ wflow_fits = dat_prepped %>%
         mutate(best_tune = 
                        map(data,
                            ~ wflow_average %>%
-                                   tune_grid(.x,
+                                   tune_grid(.x, 
                                              resamples = folds) %>%
                                    select_best(.x, metric = 'rmse'))) %>%
         mutate(workflow = map2(data,
@@ -284,7 +281,7 @@ wflow_fits = dat_prepped %>%
                                              ~ wflow_usersrated %>%
                                                      tune_grid(.x,
                                                                resamples = folds) %>%
-                                                     select_best(.x, metric = 'rsq'))) %>%
+                                                     select_best(.x, metric = 'rmse'))) %>%
                           mutate(workflow = map2(data,
                                                  best_tune,
                                                  ~ wflow_usersrated %>%

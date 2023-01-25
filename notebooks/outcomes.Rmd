@@ -33,7 +33,7 @@ tidy_games =
         # filter out games with missingness on average weight
         filter(!is.na(averageweight) & averageweight!=0) %>%
         # filter our kickstarter editions and big box editions
-        filter(!(grepl("kickstarter|big box|mega box|megabox", name))) %>%
+      #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
         # filter to games released prior to current year
         filter(yearpublished < year(Sys.Date())) %>%
         # filter to games with at least X votes
@@ -335,16 +335,23 @@ More and more games are being published ever year[^ This visualization shows all
 
 ```{r games by year}
 
-analysis_games %>%
+p = analysis_games %>%
         filter(yearpublished > 1950 & yearpublished<=train_year) %>%
         group_by(yearpublished) %>%
         summarize(num_games = n_distinct(game_id),
                   .groups = 'drop') %>%
         ggplot(aes(x=yearpublished,
+                   text = paste0(
+                           paste("yearpublished:", round(yearpublished, 0)),
+                           paste("num_games:", round(num_games, 0)),
+                           sep = "\n"),
                    y=num_games))+
         geom_col()+
         theme_phil()+
         my_caption
+
+plotly::ggplotly(p,
+                 tooltip = 'text')
 
 ```
 

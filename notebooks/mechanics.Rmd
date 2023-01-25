@@ -40,7 +40,7 @@ tidy_games =
         # filter out games with missingness on average weight
         filter(!is.na(averageweight) & averageweight!=0) %>%
         # filter our kickstarter editions and big box editions
-        filter(!(grepl("kickstarter|big box|mega box|megabox", name))) %>%
+      #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
         # filter to games released prior to current year
         filter(yearpublished < year(Sys.Date())) %>%
         # filter to games with at least X votes
@@ -74,7 +74,7 @@ What are the most frequent mechanics on BGG? How are games with each mechanic ty
 
 ```{r most common mechanics, warning=F, message=F}
 
-game_mechanics %>%
+p = game_mechanics %>%
         group_by(type, id, value) %>%
         summarize(games = n_distinct(game_id),
                   .groups = 'drop') %>%
@@ -85,7 +85,11 @@ game_mechanics %>%
                                 rank %in% seq(26, 50) ~ "26-50")) %>%
         mutate(value = abbreviate(value, minlength=25)) %>%
         ggplot(aes(y=reorder(value,games),
-                   x=games))+
+                   x=games,
+                   text = paste0(
+                           paste("mechanic:", reorder(value, games)),
+                           paste("games:", games),
+                           sep = "\n")))+
         geom_col()+
         theme_phil()+
         theme(axis.text.y = element_text(size = 8),
@@ -95,6 +99,9 @@ game_mechanics %>%
         scale_x_continuous(breaks = scales::pretty_breaks(n=3))+
         ylab("Mechanic")+
         xlab("Number of Games")
+
+plotly::ggplotly(p,
+                 tooltip = 'text')
         
 
 ```
