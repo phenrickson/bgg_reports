@@ -171,6 +171,14 @@
       "Hash": "3b986a53325a1d95610b8d86a284dac0",
       "Requirements": []
     },
+    "ISOcodes": {
+      "Package": "ISOcodes",
+      "Version": "2022.09.29",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c4bc79931eab19f1553b31b744aa5ac1",
+      "Requirements": []
+    },
     "KernSmooth": {
       "Package": "KernSmooth",
       "Version": "2.23-20",
@@ -4062,6 +4070,16 @@
         "data.table"
       ]
     },
+    "stopwords": {
+      "Package": "stopwords",
+      "Version": "2.3",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "82036936cbed392a250d2e6ee6ef2e53",
+      "Requirements": [
+        "ISOcodes"
+      ]
+    },
     "stringdist": {
       "Package": "stringdist",
       "Version": "0.9.8",
@@ -4137,6 +4155,29 @@
       "Repository": "CRAN",
       "Hash": "fd792ceac77f96b647fa8d6e1788969a",
       "Requirements": []
+    },
+    "textrecipes": {
+      "Package": "textrecipes",
+      "Version": "1.0.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "e54f06d1d4c47e953ab819c795bf6efc",
+      "Requirements": [
+        "Matrix",
+        "SnowballC",
+        "cpp11",
+        "dplyr",
+        "generics",
+        "glue",
+        "lifecycle",
+        "magrittr",
+        "purrr",
+        "recipes",
+        "rlang",
+        "tibble",
+        "tokenizers",
+        "vctrs"
+      ]
     },
     "themis": {
       "Package": "themis",
