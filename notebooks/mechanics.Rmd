@@ -6,7 +6,7 @@ params:
         min_ratings: 50
 ---
 
-```{r setup, inclue=F, results = 'hide', message=F, warning=F}
+```{r setup, include=F, results = 'hide', message=F, warning=F}
 
 source(here::here("src", "helpers", "exploratory_setup.R"))
 
@@ -86,7 +86,7 @@ p = game_mechanics %>%
         mutate(value = abbreviate(value, minlength=25)) %>%
         ggplot(aes(y=reorder(value,games),
                    x=games,
-                   text = paste0(
+                   text = paste(
                            paste("mechanic:", reorder(value, games)),
                            paste("games:", games),
                            sep = "\n")))+
@@ -150,15 +150,16 @@ upset = game_mechanics %>%
                     values_fill = list(has_type = 0)) %>%
         as.data.frame() %>%
         UpSetR::upset(nsets = 15,
+                      nintersects = 30,
                       keep.order = T,
                       order.by = c("freq"),
-                      mb.ratio = c(0.6, 0.4))
+                      mb.ratio = c(0.4, 0.6))
 
 ```
 
 The bar chart on the bottom left indicates the number of games with a specific mechanic. The bar chart on the top indicates the number of games with a **combination** of mechanics. That is, the most common mechanic in games is Dice-Rolling, and there are many games in which Dice-Rolling is the only mechanic. The most frequent combination of mechanics is Simulation + Hexagon Grid + Dice-Rolling.
 
-```{r print upset, fig.height = 8}
+```{r print upset, out.width='100%'}
 
 print(suppressMessages({
         upset

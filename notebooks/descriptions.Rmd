@@ -6,7 +6,7 @@ params:
         min_ratings: 50
 ---
 
-```{r setup, inclue=F, results = 'hide', message=F, warning=F}
+```{r setup, include=F, results = 'hide', message=F, warning=F}
 
 source(here::here("src", "helpers", "exploratory_setup.R"))
 

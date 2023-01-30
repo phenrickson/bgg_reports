@@ -6,7 +6,7 @@ params:
         min_ratings: 50
 ---
 
-```{r setup, inclue=F, results = 'hide', message=F, warning=F}
+```{r setup, include=F, results = 'hide', message=F, warning=F}
 
 source(here::here("src", "helpers", "exploratory_setup.R"))
 
@@ -40,7 +40,7 @@ tidy_games =
         # filter out games with missingness on average weight
         filter(!is.na(averageweight) & averageweight!=0) %>%
         # filter our kickstarter editions and big box editions
-      #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
+        #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
         # filter to games released prior to current year
         filter(yearpublished < year(Sys.Date())) %>%
         # filter to games with at least X votes
@@ -74,7 +74,7 @@ What are the most frequent categories on BGG? How are games within each category
 
 ```{r most common categories, warning=F, message=F}
 
-game_categories %>%
+p = game_categories %>%
         group_by(type, id, value) %>%
         summarize(games = n_distinct(game_id),
                   .groups = 'drop') %>%
@@ -85,7 +85,11 @@ game_categories %>%
                                 rank %in% seq(26, 50) ~ "26-50")) %>%
         mutate(value = abbreviate(value, minlength=25)) %>%
         ggplot(aes(y=reorder(value,games),
-                   x=games))+
+                   x=games,
+                   text = paste(
+                           paste("category:", reorder(value, games)),
+                           paste("games:", games),
+                           sep = "\n")))+
         geom_col()+
         theme_phil()+
         theme(axis.text.y = element_text(size = 8),
@@ -95,8 +99,10 @@ game_categories %>%
         scale_x_continuous(breaks = scales::pretty_breaks(n=3))+
         ylab("Category")+
         xlab("Number of Games")
-        
 
+plotly::ggplotly(p,
+                 tooltip = 'text')
+        
 ```
 
 I'll then plot the distribution of games with the 25 most frequent categories. What types of categories are typically associated with heavier games? What category is the highest rated (on average)?
@@ -104,7 +110,7 @@ I'll then plot the distribution of games with the 25 most frequent categories. W
 ```{r plot categories}
 
 plot_games_by_categorical(game_categories,
-                             25)
+                          25)
 
 ```
 
@@ -129,7 +135,7 @@ summary_data %>%
 ```
 
 ## Combinations of Categories
- 
+
 What are the most frequent pairings of categories in games on BGG? The following visualization displays an upset plot of the most frequent combinations of categories used in games.
 
 ```{r upset plot}
@@ -143,15 +149,16 @@ upset = game_categories %>%
                     values_fill = list(has_type = 0)) %>%
         as.data.frame() %>%
         UpSetR::upset(nsets = 15,
+                      nintersects = 30,
                       keep.order = T,
                       order.by = c("freq"),
-                      mb.ratio = c(0.6, 0.4))
+                      mb.ratio = c(0.4, 0.6))
 
 ```
 
 The bar chart on the bottom left indicates the number of games in each category. The bar chart on the top indicates the number of games with a **combination** of categories. That is, the most common category in games has typically been Card-Games, and there are many games in which Card Game is their only category. The most frequent combination of categories, historically, has been Fantasy + Card Game and Science Fiction + Wargame.
 
-```{r print upset, fig.height = 8}
+```{r print upset, out.width='100%'}
 
 print(suppressMessages({
         upset

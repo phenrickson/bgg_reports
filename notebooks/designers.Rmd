@@ -6,7 +6,7 @@ params:
         min_ratings: 50
 ---
 
-```{r setup, inclue=F, results = 'hide', message=F, warning=F}
+```{r setup, include=F, results = 'hide', message=F, warning=F}
 
 source(here::here("src", "helpers", "exploratory_setup.R"))
 
@@ -68,7 +68,7 @@ What are the designers of games on BGG and how do they relate to community ratin
 
 # Designers
 
-## Top Designers by BGG Outcome
+## Top Designers
 
 Which designers have published the most games on BGG? Which designers are the highest rated? Most popular? 
 
@@ -113,7 +113,9 @@ plot_games_by_categorical(game_designers,
 
 ```
 
-Finally, the following (interactive) table displays the mean of each BGG outcome by designer. Use the filters below the column names to filter through the table by designer or set a minimum number of games. 
+## Designer Ratings
+
+The following (interactive) table displays the mean of each BGG outcome by designer. Use the filters below the column names to filter through the table by designer or set a minimum number of games. 
 
 ```{r make summary table}
 
@@ -139,9 +141,11 @@ Which designers have the largest effect on a game's average? User ratings?
 
 We could simply look at the games published by each designer and then take their average rating/average number of user ratings. However, this doesn't account for the fact that some designers design more complex games than others, or that recently published games tend to have higher averages. 
 
-To get an estimate of each designer's partial effect on an outcome, I run penalized regressions lasso) of the BGG average/usersrated on dummies for individual game designers along with the game's weight and effects for year published [^ I handle time effects in two different ways, first creating an indicator for games published before 1900, then fitting cubic splines to the truncated publishing range of years 1900 to present].
+To get an estimate of each designer's partial effect on an outcome, I run penalized regressions lasso) of the BGG average/usersrated on dummies for individual game designers along with the game's weight and effects for year published.
 
-$$ Average = \beta_0 + Weight * \beta_1 + Designer_i * \beta_2 + Designer_j * \beta_3 * Designer_k ... Designer_n * \beta_n + YearPublished $$
+I handle time effects in two different ways, first creating an indicator for games published before 1900, then fitting cubic splines to the truncated publishing range of years 1900 to present.
+
+$$ Average = \beta_0 + Weight * \beta_1 + Designer_1 * \beta_2 + Designer_2 * \beta_3 * Designer_k ... Designer_n * \beta_n + YearPublished$$
 ```{r partial effects of designers, include=F}
 
 dat = tidy_games %>%
