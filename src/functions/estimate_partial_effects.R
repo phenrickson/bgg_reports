@@ -108,7 +108,7 @@ estimate_partial_effects = function(train_games,
                             -has_role("id"),
                             new_role = "predictor") %>%
                 # address missingness
-                step_medianimpute(averageweight) %>%
+                step_impute_median(averageweight) %>%
                 # compress yearpublished
                 # denote games published before 1900 with indiciator
                 step_mutate(published_prior_1900 = dplyr::case_when(yearpublished < 1900 ~ 1,
@@ -117,7 +117,7 @@ estimate_partial_effects = function(train_games,
                 step_mutate(year = case_when(yearpublished < 1900 ~ 1900,
                                              TRUE ~ yearpublished)) %>%
                 # then, add spline for truncated yearpublished
-                step_ns(yearpublished,
+                step_ns(year,
                         deg_free = 9) %>%
                 # then, convert averageweight to 0 1
                 step_range(averageweight, min = 0, max =1) %>%
