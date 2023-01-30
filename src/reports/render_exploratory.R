@@ -1,8 +1,8 @@
 # what: render exploratory markdown reports
 
 # set parameters
-render_params = list(train_year = 2020,
-              min_ratings = 50)
+render_params = list(train_year = 2022,
+              min_ratings = 25)
 
 # outcomes
 rmarkdown::render(input = here::here("notebooks", "outcomes.Rmd"),
@@ -22,10 +22,10 @@ rmarkdown::render(input = here::here("notebooks", "designers.Rmd"),
                   output_dir = here::here("reports", "exploratory"))
 
 # publishers
-rmarkdown::render(input = here::here("notebooks", "publishers.Rmd"),
-                  params = render_params,
-                  clean =T,
-                  output_dir = here::here("reports", "exploratory"))
+# rmarkdown::render(input = here::here("notebooks", "publishers.Rmd"),
+#                   params = render_params,
+#                   clean =T,
+#                   output_dir = here::here("reports", "exploratory"))
 
 # categories
 rmarkdown::render(input = here::here("notebooks", "categories.Rmd"),
