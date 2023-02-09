@@ -1,24 +1,28 @@
 # what: build recipes for modeling games data
 
 # dependencies:
-# requires train from preprocessing 
+# preprocessing.R
 
-# basic recipe; little to no preprocesing
-base_recipe_func = function(outcome) {
+# basic recipe; little to no preprocessing
+# specify 'outcome' variable in recipe
+base_recipe_func = function(data,
+                            outcome) {
         
-        recipe(x=train) %>%
+        recipe(x=data) %>%
                 # set id variables
-                update_role(game_id,
-                            name,
-                            yearpublished,
-                            image,
-                            thumbnail,
-                            description,
-                            load_ts,
-                            average,
-                            averageweight,
-                            bayesaverage,
-                            new_role = "id") %>%
+                update_role(
+                        one_of("game_id",
+                               "name",
+                               "yearpublished",
+                               "image",
+                               "thumbnail",
+                               "description",
+                               "load_ts",
+                               "average",
+                               "usersrated",
+                               "averageweight",
+                               "bayesaverage"),
+                        new_role = "id") %>%
                 # set outcome varable
                 update_role(all_of(outcome),
                             new_role = "outcome") %>%
@@ -31,6 +35,7 @@ base_recipe_func = function(outcome) {
                 step_mutate(number_mechanics = rowSums(across(starts_with("mec_")))) %>%
                 # mumber of categories
                 step_mutate(number_categories = rowSums(across(starts_with("cat_")))) %>%
+                # solo game
                 # big box/deluxe/anniversary edition
                 step_mutate(deluxe_edition = case_when(grepl("kickstarter|big box|deluxe|mega box",
                                                              description) ~ 1,
@@ -58,10 +63,11 @@ preproc_recipe_func = function(recipe) {
                                    maxplayers,
                                    minage) %>% # medianimpute numeric predictors
                 # truncate player counts
-                step_range(minplayers, 
-                           min = 0, max = 10) %>%
-                step_range(maxplayers,
-                           min = 1, max= 20) %>%
+                step_mutate(minplayers = case_when(minplayers > 10 ~ 10,
+                                                   TRUE ~ minplayers)) %>%
+                step_mutate(maxplayers = case_when(maxplayers > 20 ~ 10,
+                                                   maxplayers <=1 ~ 1,
+                                                   TRUE ~ maxplayers)) %>%
                 # remove
                 step_rm(minplaytime, maxplaytime) %>%
                 # make time per player variable
@@ -127,19 +133,3 @@ pca_recipe_func = function(recipe) {
                  threshold = 0.75)
         
 }
-        
-        
-# not run
-pca = base_recipe_func("average") %>%
-        preproc_recipe_func() %>%
-        splines_recipe_func() %>%
-        # add specific update for averageweight
-        update_role("averageweight",
-                    new_role = "predictor") %>%
-        step_impute_median(averageweight) %>%
-        # normalize
-        norm_recipe_func() %>%
-        # pca
-        pca_recipe_func() %>%
-        # prep on train
-        prep(train)

@@ -1,11 +1,11 @@
-# what: trains models on datasets assembled from preprocessing.R
+# what: create workflows for model development
 
 # dependencies:
-# requires objects from preprocessing.R
+# preprocessing.R
+# recipes.R
 
 
-# splits ------------------------------------------------------------------
-
+# make validation/test splits ------------------------------------------------------------------
 
 # make an initial split based on previously defined splits
 valid_split = make_splits(list(analysis = seq(nrow(train)),
@@ -13,6 +13,12 @@ valid_split = make_splits(list(analysis = seq(nrow(train)),
                           data  = bind_rows(train, valid))
 
 # workflows and recipes ---------------------------------------------------
+
+
+# linear regression
+lm_spec <-
+        linear_reg(mode = "regression")
+
 
 # penalized logistic regression
 glmnet_spec <- 
@@ -44,27 +50,26 @@ cart_grid <-
 xgb_spec <-
         boost_tree(
                 trees = 250,
-                sample_size = tune(),
+              #  sample_size = tune(),
                 min_n = tune(),
-                mtry = tune(),         ## randomness
+                mtry = tune(), # randomness
                 learn_rate = tune(),  
                 tree_depth = tune(),
                 stop_iter = 50) %>%
         set_mode("regression") %>%
         set_engine("xgboost",
                    eval_metric = 'rmse',
-                   # for mtry to be in [0,1]
-                   counts = F)
+                   counts = F) # for mtry to be in [0,1]
 
 # # set up grid for tuning
 xgb_grid = 
         grid_latin_hypercube(
-                tree_depth(),
+                tree_depth = tree_depth(range = c(2L, 9L)),
                 min_n(),
-                sample_size = sample_prop(),
+             #   sample_size = sample_prop(),
                 mtry = mtry_prop(c(0.1, 1)),
                 learn_rate(),
-                size = 30
+                size = 15
         )
 
 
@@ -78,5 +83,6 @@ reg_metrics<-metric_set(yardstick::rmse,
 control_grid <- control_resamples(save_pred = TRUE, 
                                   save_workflow = TRUE,
                                   allow_par = T,
+                                  verbose = T,
                                   parallel_over = "resamples")
 
