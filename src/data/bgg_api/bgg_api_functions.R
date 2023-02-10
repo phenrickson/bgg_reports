@@ -30,15 +30,6 @@ quick_df <- function(l) {
 # function for getting data out of node
 simple_node_parse = function(node, var) {
         
-        # # for a node, get selected var
-        # system.time(
-        #         (data = map(node[var],
-        #            # convert xml to list
-        #            xmlToList) %>%
-        #         # bind elements together into a tibble
-        #         bind_rows)
-        # )
-        
         # faster way
         #    out = list()
         data = map(node[var], ~ .x %>% xmlToList %>% as.list) %>% 
@@ -56,16 +47,6 @@ simple_node_parse = function(node, var) {
                 #%>%
                 #       set_names(var)
         }
-        
-        # now nest and set name
-        #  out[[var]] = data
-        
-        
-        # # unnest if only one row and is not names
-        # if (nrow(data) <=1 & ncol(data) == 1) {
-        #         out = unnest(out, cols = everything()) %>%
-        #                 set_names(var)
-        # }
         
         # return out
         return(as_tibble(data))
@@ -166,14 +147,6 @@ extract_bgg_data = function(input_parsed_bgg_api) {
         bgg_data[['names']] =
                 simple_node_parse(input_parsed_bgg_api,
                                   'name')
-        # set name
-        # set_names(., "names")
-        
-        # get primary name
-        # name = names %>%
-        #         unnest(cols = "names") %>%
-        #         filter(type == 'primary') %>%
-        #         transmute(name = value)
         
         # description
         bgg_data[['description']] =
@@ -189,8 +162,6 @@ extract_bgg_data = function(input_parsed_bgg_api) {
         bgg_data[['thumbnail']] =
                 simple_node_parse(input_parsed_bgg_api,
                                   'thumbnail')
-        #   nest("image" = everything())
-        
         # yearpublished
         bgg_data[['yearpublished']] =
                 as.integer(
@@ -249,14 +220,6 @@ extract_bgg_data = function(input_parsed_bgg_api) {
                             xmlToList) %>%
                 bind_rows %>%
                 select(one_of("type", "id", "value")) 
-        # %>%
-        #         mutate(id = as.integer(id))
-        
-        
-        #        data.table
-        #        bind_rows %>%
-        # #       mutate(type = gsub('boardgame', '', type)) %>%
-        #        nest("categories" = everything())
         
         # statistics
         bgg_data[['statistics']] =
@@ -278,11 +241,6 @@ extract_bgg_data = function(input_parsed_bgg_api) {
                         'numweights'
                 )] %>%
                 quick_df
-        # %>%
-        #         mutate_all(as.numeric)
-        #%>%
-        #       as_tibble %>%
-        #      nest("statistics" = everything())
         
         # ranks
         bgg_data[['ranks']] =
@@ -291,8 +249,6 @@ extract_bgg_data = function(input_parsed_bgg_api) {
                 .[['ranks']] %>%
                 xmlToList %>%
                 bind_rows
-        #%>%
-        #       nest("ranks" = everything())
         
         # polls
         # this one is fiddly due to the xml structure
@@ -316,32 +272,15 @@ extract_bgg_data = function(input_parsed_bgg_api) {
                                                   # remove any records that are NA on value
                                                   filter(!is.na(value))) %>%
                         bind_rows 
-                # %>%
-                #         mutate(numvotes = as.numeric(numvotes))
+                
         } else {
                 
                 bgg_data[['polls']] = tibble("value" = NA,
                                              "numvotes" = NA,
                                              "numplayers" = NA)
         }
-        
-        # # fill categories with NAs if empty
-        # if (length(bgg_data[['links']]) == 0) {
-        #         bgg_data[['links']] =
-        #                 data.frame(type = NA_character_,
-        #                            id = NA_character_,
-        #                            value = NA_character_)
-        # }
-        # 
-        # # fill names with NAs if empty
-        # if (length(bgg_data[['names']]) == 0) {
-        #         bgg_data[['names']] =
-        #                 data.frame(type = NA_character_,
-        #                            sortindex = NA_character_,
-        #                            value = NA_character_)
-        # }
-        # 
-        # nest
+
+        # return
         return(bgg_data)
         
 }
@@ -540,7 +479,26 @@ get_bgg_games_data = function(input_game_ids,
         # if length of request is less than 400, then submit in one go
         if (length(input_game_ids) <500) {
                 
-                bgg_games_xml_obj = get_bgg_games_xml(input_game_ids)
+                # push ids to api to get xml
+                bgg_games_xml = get_bgg_games_xml(input_game_ids)
+                
+                # if tidy == F, then return input ids, problem ids, and the raw xml from bgg
+                if (tidy == F) {
+                        
+                        out = list("input_game_ids" = bgg_games_xml$input_game_ids,
+                                   "problem_game_ids" = bgg_games_xml$missing_game_ids,
+                                   "bgg_games_xml" = bgg_games_xml$bgg_games_xml)
+                        
+                        # if tidy == T, then return tidied data
+                } else if (tidy == T) {
+                        
+                        
+                        out =   suppressMessages({
+                                tidy_bgg_data_xml(bgg_games_xml,
+                                                  toJSON = F)
+                        })
+                }
+                
                 
         } else {
                 
@@ -574,7 +532,7 @@ get_bgg_games_data = function(input_game_ids,
                                 out = get_bgg_games_xml(id_batches[[b]])
                                 
                                 # slight pause to avoid taxing the API
-                            #    Sys.sleep(2)
+                                #    Sys.sleep(2)
                                 
                                 # print
                                 #  print(paste("batch", b, "of", length(batches), "complete"))
@@ -592,9 +550,9 @@ get_bgg_games_data = function(input_game_ids,
                                                 out = tidy_bgg_data_xml(bgg_games_xml_obj,
                                                                         toJSON = F)
                                         })
-
+                                        
                                 }
-
+                                
                                 # return
                                 out
                                 
@@ -623,39 +581,18 @@ get_bgg_games_data = function(input_game_ids,
                         out = list("input_game_ids" = map(resp_batches, ~ .x[['input_game_ids']]) %>% unlist(),
                                    "problem_game_ids" = map(resp_batches, ~ .x[['problem_game_ids']]) %>% unlist(),
                                    "bgg_games_data" = map(resp_batches, ~ .x[['bgg_games_data']] %>% bind_rows %>% toJSON))
-                
+                        
                 }
-   
+                
                 message("all batches completed")
                 
         }
         
-        # to convert to json
-        
-        # 
-        # # if tidy == T return with tidy bgg game data
-        # if (tidy == T) {
-        #         
-        #         tidy_bgg_games_data = tidy_bgg_data_xml(bgg_games_xml_obj,
-        #                                                 toJSON)
-        #         
-        #         out = list("input_game_ids" = tidy_bgg_games_data$input_game_ids,
-        #                    "problem_game_ids" = tidy_bgg_games_data$problem_game_ids,
-        #                    "bgg_games_data" = tidy_bgg_games_data$bgg_games_data)
-        #         
-        # } else {
-        #         # return the xml data
-        #         out = list("input_game_ids" = bgg_games_xml_obj$input_game_ids,
-        #                    "returned_game_ids" = bgg_games_xml_obj$returned_game_ids,
-        #                    "problem_game_ids" = bgg_games_xml_obj$missing_game_ids,
-        #                    "bgg_games_xml" = bgg_games_xml_obj$bgg_games_xml)
-        #         
-        # }
-        # 
         return(out)
         
         
 }
+
 
 # implement all in one function
 # split ids into batches and send multiple requests
