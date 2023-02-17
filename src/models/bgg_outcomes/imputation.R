@@ -50,8 +50,21 @@ impute_train_folds = vfold_cv(analysis(impute_split),
 # workflow sets -----------------------------------------------------------
 
 # initial recipe
-impute_rec = base_recipe_func(data = analysis(impute_split),
+game_creator_rec = base_recipe_func(data = analysis(impute_split),
                               "averageweight") %>%
+        # preprocess
+        preproc_recipe_func()
+
+# game recipe
+# removes publisher, designer, and artist features, as these blow up the dimensionality quite a bit
+game_rec = base_recipe_func(data = 
+                                       analysis(impute_split) %>%
+                                       # remove certain categorical features from the dataset 
+                                       # before hitting the recipe
+                                       select(-starts_with("pub_"),
+                                               -starts_with("des_"),
+                                               -starts_with("art_")),
+                               "averageweight") %>%
         # preprocess
         preproc_recipe_func()
 
@@ -61,23 +74,15 @@ impute_wflows =
                 # recipe with preprocessing/imputation
                 preproc = 
                         list(
-                                # preproc
-                                preproc = impute_rec,
-                                # preoroc without creator features
-                                preproc_minimal = impute_rec %>%
-                                        step_rm(starts_with("pub_"),
-                                                starts_with("des_"),
-                                                starts_with("art_")),
-                                # normalize full
-                                norm =
-                                        impute_rec %>%
+                                # preproc with all features
+                                game_creator = game_creator_rec,
+                                # preproc with fewer features
+                                game = game_rec,
+                                # normalize game_creator
+                                game_creator_norm = game_creator_rec %>%
                                         norm_recipe_func(),
                                 # normalize without creator features
-                                norm_minimal =
-                                        impute_rec %>%
-                                        step_rm(starts_with("pub_"),
-                                                starts_with("des_"),
-                                                starts_with("art_")) %>%
+                                game_norm = game_rec %>%
                                         norm_recipe_func()
                         ),
                 # model specifications
@@ -91,15 +96,17 @@ impute_wflows =
         inner_join(
                 tibble(
                         wflow_id =
-                                c("preproc_minimal_xgb",
-                                  "norm_minimal_lm",
-                                  "norm_glmnet")),
+                                c("game_xgb",
+                                  "game_norm_lm",
+                                  "game_creator_norm_glmnet",
+                                  "game_norm_glmnet")),
                 by = c("wflow_id")) %>%
         # add in custom tuning grids
         # glmnet grid
-        option_add(param_info = glmnet_grid, id = c("norm_glmnet")) %>%
+        option_add(param_info = glmnet_grid, id = c("game_creator_norm_glmnet",
+                                                    "game_norm_glmnet")) %>%
         # xgb grid
-        option_add(grid = xgb_grid, id = c("preproc_minimal_xgb"))
+        option_add(grid = xgb_grid, id = c("game_xgb"))
 
 # tune and evaluate via race
 # register parallel
@@ -177,7 +184,7 @@ impute_last_fits %>%
         unnest(.metrics) %>%
         arrange(.metric)
 
-# workflow
+# fit final workflow
 impute_wflows = 
         impute_last_fits %>%
         unnest(last_fit) %>%
@@ -189,13 +196,60 @@ impute_wflows =
                                        fit(impute))
         )
 
-rm(list=setdiff(ls(), c("categorical_mapping",
-                        "train",
-                        "valid",
-                        "other",
-                        "impute",
-                        "impute_wflows")))
+# impute training and validation
+train = 
+        impute_wflows %>%
+        filter(wflow_id == 'game_xgb') %>%
+        pluck(".workflow", 1) %>%
+        augment(train) %>%
+        # impute missigness on averageweight
+        mutate(averageweight = case_when(is.na(averageweight) ~ .pred,
+                                         TRUE ~ averageweight)) %>%
+        select(-.pred)
 
+valid = 
+        impute_wflows %>%
+        filter(wflow_id == 'game_xgb') %>%
+        pluck(".workflow", 1) %>%
+        augment(valid) %>%
+        # impute missigness on averageweight
+        mutate(averageweight = case_when(is.na(averageweight) ~ .pred,
+                                         TRUE ~ averageweight)) %>%
+        select(-.pred)
+
+# discard what we don't need
+rm(impute_last_fits,
+   impute_race_res,
+   impute_split,
+   impute_train_folds
+   )
+
+# rm(list=setdiff(ls(), c("categorical_mapping",
+#                         "train",
+#                         "valid",
+#                         "other",
+#                         "impute",
+#                         "impute_wflows")))
+
+
+# # model cards
+# 
+# library(vetiver)
+# library(pins)
+# 
+# model_board <- board_folder(here::here("models", "board"))
+# 
+# mod = impute_wflows %>% 
+#         filter(wflow_id == 'game_norm_lm') %>% pluck(".workflow", 1)
+#         
+# v <- vetiver_model(mod, "averageweight_lm")
+# vetiver_pin_write(model_board, v)
+# 
+# rmarkdown::draft(
+#         "my_model_card.Rmd", 
+#         template = "vetiver_model_card", 
+#         package = "vetiver"
+# )
 
 
 

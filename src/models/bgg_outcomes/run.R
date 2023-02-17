@@ -2,17 +2,18 @@
 
 # set params for run
 end_train_year = 2019
-min_ratings = 25
+min_ratings = 0
 
 # run preprocessing
 source(here::here("src", "models", "bgg_outcomes", "preprocessing.R"), echo=TRUE)
 
-# create recipes
-source(here::here("src", "models", "bgg_outcomes", "recipes.R"), echo=TRUE)
+# create recipes and model specs
+source(here::here("src", "models", "bgg_outcomes", "recipes_and_models.R"), echo=TRUE)
 
-# create model specs
-source(here::here("src", "models", "bgg_outcomes", "models.R"), echo=TRUE)
+# train via workflow sets
+source(here::here("src", "models", "bgg_outcomes", "training_models.R"), echo=TRUE)
 
 # imputation
-source(here::here("src", "models", "bgg_outcomes", "imputation.R"), echo=TRUE)
+# source(here::here("src", "models", "bgg_outcomes", "imputation.R"), echo=TRUE)
 
+# training

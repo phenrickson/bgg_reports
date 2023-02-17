@@ -7,13 +7,7 @@
 
 # make validation/test splits ------------------------------------------------------------------
 
-# make an initial split based on previously defined splits
-valid_split = make_splits(list(analysis = seq(nrow(train)),
-                               assessment = nrow(train) + seq(nrow(valid))),
-                          data  = bind_rows(train, valid))
-
 # workflows and recipes ---------------------------------------------------
-
 
 # linear regression
 lm_spec <-

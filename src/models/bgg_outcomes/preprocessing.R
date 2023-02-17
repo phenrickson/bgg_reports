@@ -60,36 +60,30 @@ load(here::here("data", "local", "analysis_games_tables.Rdata"))
 # source(here::here("pull_analysis_games_tables.R"))
 
 # publisher white list
-processed_board = board_folder(here::here("data", "processed"),
-                     versioned = T)
+processed_board = board_folder(here::here("data", "processed"), versioned = T)
 
 # read in publisher allow list
-publisher_allow_list = processed_board %>%
-        pin_read("publisher_allow_list")
+publisher_allow_list = processed_board %>% pin_read("publisher_allow_list")
 
 
 # functions ---------------------------------------------------------------
 
+
 # functions used in creating features fore games
 source(here::here("src", "features", "make_features_functions.R"))
-
-# for plotting
-source(here::here("src", "helpers", "theme_phil.R"))
 
 
 # data splitting -----------------------------------------------------------
 
+
 # use tidy and split games function to designate train test split
-
-# get filtered games given training year
-
 tidied_games = 
         # apply simple preprocessing
         tidy_games(analysis_games) %>%
         # apply custom split on training year, filtering to minimum ratings
         split_games(.,
                     end_train_year = end_train_year,
-                    min_ratings = min_ratings)
+                    min_ratings = 30)
         
 # get train
 train_games = tidied_games$train_games
@@ -101,13 +95,47 @@ valid_games = tidied_games$valid_games
 other_games = tidied_games$other_games
 
 
+
+# filter training set with hurdle model -----------------------------------------------------
+
+
+# read hurdle model
+#model_board = board_folder(here::here("models", "board"))
+
+# # load model
+# hurdle_model = vetiver::vetiver_pin_read(board = model_board,
+#                                    name = "hurdle_model")
+# 
+# # predict
+# train_hurdle_preds =
+#         # use hurdle model to predict probabiltiy that games in training set will hit minimum
+#         # this essentially takes the form of downsampling the training set and removing a lot of the low quality entires
+#         hurdle_model %>%
+#         augment(hurdle_prep(train_games), type = 'prob')
+# 
+# 
+# # keep games above a cutpoint, which in training was around 0.1
+# train_hurdle =
+#         train_hurdle_preds %>%
+#         # above pre determined cutpoint
+#         filter(.pred_yes >= .1) %>%
+#         # keep only names in train games
+#         select(names(train_games))
+# 
+# train_games = train_hurdle
+# rm(train_hurdle)
+
+
 # create features for categorical variables -------------------------------------------
 
+
 # use categorical features function to select categorical features for 
-selected_categorical_variables = create_categorical_variables(train_games)
+selected_categorical_variables = 
+        create_categorical_variables(train_games)
 
 # get features (pivoted table of games with dummies for categories)
-categorical_features = selected_categorical_variables$games_categorical_pivoted
+categorical_features = 
+        selected_categorical_variables$games_categorical_pivoted
 
 # keep categorical mapping
 categorical_mapping = selected_categorical_variables$categorical_mapping
@@ -121,7 +149,11 @@ train =
                   by = c("game_id")) %>%
         # replace NAs in any of the categorical dummies with 0s
         mutate_at(vars(any_of(names(categorical_features))),
-                  replace_na, 0)
+                  replace_na, 0) %>%
+        # apply preprocessing
+        preprocess_categorical_games() %>%
+        # log transform usersrated
+        mutate(usersrated = log1p(usersrated))
 
 # validation
 valid = 
@@ -132,7 +164,11 @@ valid =
                   by = c("game_id")) %>%
         # replace NAs in any of the categorical dummies with 0s
         mutate_at(vars(any_of(names(categorical_features))),
-                  replace_na, 0)
+                  replace_na, 0) %>%
+        # apply preprocessing
+        preprocess_categorical_games() %>%
+        # log transform usersrated
+        mutate(usersrated = log1p(usersrated))
 
 
 # other
@@ -144,15 +180,16 @@ other =
                   by = c("game_id")) %>%
         # replace NAs in any of the categorical dummies with 0s
         mutate_at(vars(any_of(names(categorical_features))),
-                  replace_na, 0)
+                  replace_na, 0) %>%
+        # apply preprocessing
+        preprocess_categorical_games() %>%
+        # log transform usersrated
+        mutate(usersrated = log1p(usersrated))
 
-
-        
 # categorical blueprint
 rm(list=setdiff(ls(), c("categorical_mapping",
+                        "end_train_year",
                         "train",
                         "valid",
                         "other")))
-
-# modeling
 

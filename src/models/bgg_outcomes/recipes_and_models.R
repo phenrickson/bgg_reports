@@ -1,0 +1,200 @@
+# what: build recipes and model specifications for modeling games data
+
+# dependencies:
+# preprocessing.R
+
+# basic recipe; little to no preprocessing
+# specify 'outcome' variable in recipe
+base_recipe_func = function(data,
+                            outcome) {
+        
+        recipe(x=data) %>%
+                # set id variables
+                update_role(
+                        one_of("game_id",
+                               "name",
+                               "yearpublished",
+                               "image",
+                               "thumbnail",
+                               "description",
+                               "load_ts",
+                               "average",
+                               "usersrated",
+                               "averageweight",
+                               "bayesaverage"),
+                        new_role = "id") %>%
+                # set outcome varable
+                update_role(all_of(outcome),
+                            new_role = "outcome") %>%
+                # set all others as predictors
+                update_role(-has_role("id"),
+                            -has_role("outcome"),
+                            new_role = "predictor") %>%
+                # remove zero variance
+                step_zv(all_predictors())
+        
+}
+
+# additional preprocessing
+# impute missigness on playing time via median
+preproc_recipe_func = function(recipe) {
+        
+        recipe %>%
+                step_impute_median(playingtime,
+                                   minplayers,
+                                   maxplayers,
+                                   minage) %>% # medianimpute numeric predictors
+                # truncate player counts
+                step_mutate(minplayers = dplyr::case_when(minplayers > 10 ~ 10,
+                                                          TRUE ~ minplayers)) %>%
+                step_mutate(maxplayers = dplyr::case_when(maxplayers > 20 ~ 10,
+                                                          maxplayers <=1 ~ 1,
+                                                          TRUE ~ maxplayers)) %>%
+                # remove
+                step_rm(minplaytime, maxplaytime) %>%
+                # make time per player variable
+                step_mutate(time_per_player = playingtime/ maxplayers) %>% 
+                # log time per player and playingtime
+                step_log(time_per_player,
+                         playingtime,
+                         offset = 1) %>%
+                # normalize
+                step_normalize(all_numeric_predictors())
+}
+
+# impute averageweight inside of a recipe
+impute_averageweight_recipe_func = function(recipe) {
+        
+        recipe %>%
+                # impute averageweight inside of recipe via a simpler linear model
+                step_impute_linear(
+                        impute_with = imp_vars(all_predictors(),
+                                               # remove creator variables
+                                               -starts_with("pub_"),
+                                               -starts_with("des_"),
+                                               -starts_with("art_"))
+                ) %>%
+                # force averageweight predictions to be within bound
+                step_mutate(averageweight = dplyr::case_when(averageweight > 5 ~ 5,
+                                                      averageweight < 1 ~ 1,
+                                                      TRUE ~ averageweight))
+        
+}
+
+# add splines
+splines_recipe_func = function(recipe) {
+        
+        recipe %>%
+                # truncate yearpublished
+                step_mutate(year = dplyr::case_when(yearpublished < 1900 ~ 1900,
+                                                   TRUE ~ yearpublished)) %>%
+                # # then, add spline for truncated yearpublished
+                step_ns(year,
+                        deg_free = 5) %>%
+                # ### nonlinear effects
+                # # spline for number mechanics
+                step_ns(number_mechanics,
+                        deg_free = 5) %>%
+                # # spline for number categories
+                step_ns(number_categories,
+                        deg_free = 5)
+        # # cubic splines for playingtime and time per player
+        # step_ns(playingtime,
+        #         deg_gree = 3)
+        # step_ns(time_per_player,
+        #         deg_gree = 3) %>%
+        # # check for missingnness
+        # check_missing(all_numeric_predictors())
+        # 
+}
+
+# normalization
+norm_recipe_func = function(recipe) {
+        
+        recipe %>%
+                step_normalize(all_numeric_predictors())
+        
+}
+
+# additional recipes
+pca_recipe_func = function(recipe) {
+        
+        recipe %>%
+        step_pca(all_numeric_predictors(),
+                 prefix = "PC",
+                 threshold = 0.75)
+        
+}
+
+# workflows and recipes ---------------------------------------------------
+
+library(poissonreg)
+
+# linear regression
+lm_spec <-
+        linear_reg(mode = "regression") %>%
+        set_engine("lm")
+
+# # poisson regression
+# poisson_spec = poisson_reg(mode = "regression",
+#                         penalty = tune::tune()) %>%
+#         set_engine("glmnet")
+# 
+# # zero inflated poisson
+# zeroinfl_spec = poisson_reg(mode = "regression") %>%
+#         set_engine("zeroinfl")
+
+# penalized logistic regression
+glmnet_spec <- 
+        linear_reg(mode = "regression",
+                   penalty = tune::tune(),
+                   mixture = 0.5) %>%
+        set_engine("glmnet")
+
+# specify grid for tuning glmnet
+glmnet_grid <- 
+        grid_regular(
+                penalty(range = c(-5, -.5)),
+                levels = 10
+        )
+
+# cart
+cart_spec <-
+        decision_tree() %>%
+        set_mode("regression")
+
+# cart grid
+cart_grid <- 
+        grid_regular(
+                cost_complexity(), 
+                min_n(), 
+                levels = c(cost_complexity = 3, 
+                           min_n = 6)
+        )
+
+# xgbTree
+xgb_spec <-
+        boost_tree(
+                trees = tune(),
+                #  sample_size = tune(),
+                min_n = tune(),
+                mtry = tune(), # randomness
+                learn_rate = tune(),
+                tree_depth = tune(),
+                stop_iter = 50) %>%
+        set_mode("regression") %>%
+        set_engine("xgboost",
+                   eval_metric = 'rmse',
+                   counts = F) # for mtry to be in [0,1]
+
+# # set up grid for tuning
+xgb_grid = 
+        grid_latin_hypercube(
+                trees = trees(range = c(250, 500)),
+                tree_depth = tree_depth(range = c(2L, 9L)),
+                min_n(),
+                #   sample_size = sample_prop(),
+                mtry = mtry_prop(c(0.25, 1)),
+                learn_rate(),
+                size = 30
+        )
