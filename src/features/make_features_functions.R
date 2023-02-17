@@ -1,6 +1,167 @@
 # what: functions used for creating/preprocessing categorical features
 
 
+
+# preprocessing functions -------------------------------------------------
+
+
+# tidy games 
+tidy_games = function(games) {
+        
+        # apply consistent prep to full table
+        prepped =
+                games %>%
+                # change zeros to missingness
+                mutate_at(
+                        vars(c("yearpublished",
+                               "averageweight",
+                               "average",
+                               "bayesaverage",
+                               "stddev",
+                               "minplayers",
+                               "maxplayers",
+                               "playingtime",
+                               "minplaytime",
+                               "maxplaytime")),
+                        ~ na_if(., 0)) %>%
+                # change some integers to numeric
+                mutate_at(
+                        vars(c("minage",
+                               "minplayers",
+                               "maxplayers",
+                               "usersrated",
+                               "playingtime",
+                               "minplaytime",
+                               "maxplaytime")),
+                        as.numeric
+                ) 
+        
+        return(prepped)
+        
+}
+
+# creates tidied games dataset for analysis
+split_games = function(games,
+                       end_train_year,
+                       min_ratings) {
+        
+        # training set
+        # removes unreleased games
+        # then removes games with data quality issues (drop, missinginess on yearpublished, etc)
+        train = games %>%
+                # filter to year
+                filter(yearpublished <= end_train_year) %>%
+                # drop games that weren't released or have data quality issues
+                filter(!(game_id %in% c(
+                        unreleased_games$game_id,
+                        drop_games$game_id))
+                ) %>%
+                # filter out games with missingness on yearpublished
+                filter(!is.na(yearpublished)) %>%
+                # filter to games with at least X votes
+                filter(usersrated >= min_ratings) %>%
+                # set yearpublished to numeric
+                mutate(yearpublished = as.numeric(yearpublished)) %>%
+                # get description
+                left_join(., 
+                          game_descriptions %>%
+                                  select(game_id, description),
+                          by = c("game_id")) %>%
+                transmute(game_id,
+                          name,
+                          yearpublished,
+                          image,
+                          thumbnail,
+                          averageweight,
+                          average,
+                          bayesaverage,
+                          usersrated,
+                          minage,
+                          minplayers,
+                          maxplayers,
+                          playingtime,
+                          minplaytime,
+                          maxplaytime,
+                          description,
+                          load_ts)
+        
+        # validation set
+        # games published after training year
+        # still excludes those with key data quality issues (meet drop criteria; missingness on yearpublished)
+        # but, keeps games with missigness on average weight
+        # and applies no minimum ratings filter
+        valid = 
+                games %>%
+                filter(yearpublished > end_train_year) %>%
+                # drop games that weren't released or have data quality issues
+                filter(!(game_id %in% c(
+                        unreleased_games$game_id,
+                        drop_games$game_id))
+                ) %>%
+                # filter out games with missingness on yearpublished
+                filter(!is.na(yearpublished)) %>%
+                # set yearpublished to numeric
+                mutate(yearpublished = as.numeric(yearpublished)) %>%
+                # get description
+                left_join(., 
+                          game_descriptions %>%
+                                  select(game_id, description),
+                          by = c("game_id")) %>%
+                transmute(game_id,
+                          name,
+                          yearpublished,
+                          image,
+                          thumbnail,
+                          averageweight,
+                          average,
+                          bayesaverage,
+                          usersrated,
+                          minage,
+                          minplayers,
+                          maxplayers,
+                          playingtime,
+                          minplaytime,
+                          maxplaytime,
+                          description,
+                          load_ts) %>%
+                select(all_of(names(train)))
+        
+        # games not in train or valid
+        other = 
+                games %>%
+                filter(!(game_id %in% c(train$game_id, valid$game_id))) %>%
+                # get description
+                left_join(., 
+                          game_descriptions %>%
+                                  select(game_id, description),
+                          by = c("game_id")) %>%
+                transmute(game_id,
+                          name,
+                          yearpublished,
+                          image,
+                          thumbnail,
+                          averageweight,
+                          average,
+                          bayesaverage,
+                          usersrated,
+                          minage,
+                          minplayers,
+                          maxplayers,
+                          playingtime,
+                          minplaytime,
+                          maxplaytime,
+                          description,
+                          load_ts) %>%
+                select(all_of(names(train))) 
+        
+        
+        return(list("train_games" = train,
+                    "valid_games" = valid,
+                    "other_games" = other))
+        
+        
+}
+
 # categorical features ----------------------------------------------------
 
 # function for abbreviating categories
@@ -40,11 +201,51 @@ pivot_categorical_variables = function(games_categorical) {
         
 }
 
+# function specifically for prepping for hurdle model
+# categories_and_mechanics
+hurdle_prep = function(games,
+                       api = F) {
+        
+        
+        if (api == F) {
+                
+                # create dummies for categorical variables
+                hurdle_categorical = 
+                        bind_rows(game_categories,
+                                  game_mechanics) %>%
+                        distinct(game_id, type, id, value) %>%
+                        pivot_categorical_variables()
+                
+                # join games with categorical dummies
+                games %>%
+                        left_join(.,
+                                  hurdle_categorical,
+                                  by = c("game_id")) %>%
+                        # replace nas
+                        mutate_at(vars(starts_with("cat_"),
+                                       starts_with("mec_")),
+                                  ~ replace_na(., 0))
+                
+        } else if (api == T) {
+                
+                games %>%
+                        # replace nas
+                        mutate_at(vars(starts_with("cat_"),
+                                       starts_with("mec_")),
+                                  ~ replace_na(., 0))
+                
+                
+                
+        }
+   
+        
+}
+
 # function to create categorical variables given a training set of games
 create_categorical_variables = function(train_games) {
         
-        n = 10
-        message(paste("creating features for game mechanics with at least", n, "games"))
+        # n = 10
+        # message(paste("creating features for game mechanics with at least", n, "games"))
         selected_mechanics =
                 game_mechanics %>%
                 # filter to games in train
@@ -53,11 +254,10 @@ create_categorical_variables = function(train_games) {
                 group_by(id) %>%
                 mutate(n_games = n_distinct(game_id)) %>%
                 ungroup() %>%
-                filter(n_games > n) %>%
                 distinct(type, id, value)
         
         # categories
-        message(paste("creating features for game categories with at least", n, "games"))
+        # message(paste("creating features for game categories with at least", n, "games"))
         selected_categories = 
                 game_categories %>%
                 # filter games in training
@@ -66,12 +266,11 @@ create_categorical_variables = function(train_games) {
                 group_by(id) %>%
                 mutate(n_games = n_distinct(game_id)) %>%
                 ungroup() %>%
-                filter(n_games > n) %>%
                 distinct(type, id, value)
         
         # families
         n = 100
-        message(paste("creating features for game families with at least", n, "games"))
+        message(paste("creating features for selected game families with at least", n, "games"))
         selected_families = 
                 game_families %>%
                 # filter games in training
@@ -182,7 +381,32 @@ create_categorical_variables = function(train_games) {
         
 }
 
-# function to take a game and 
+# process dataset with categorical
+preprocess_categorical_games = function(games) {
+        
+        # some simple feature engineering
+        games %>%
+                # number of mechanics
+                mutate(number_mechanics = rowSums(dplyr::across(starts_with("mec_")))) %>%
+                # mumber of categories
+                mutate(number_categories = rowSums(dplyr::across(starts_with("cat_")))) %>%
+                # solo game
+                # big box/deluxe/anniversary edition
+                mutate(deluxe_edition = dplyr::case_when(grepl("kickstarter|big box|deluxe|mega box", tolower(name))==T ~ 1,
+                                                         TRUE ~ 0)) %>%
+                # word count
+                mutate(word_count = stringi::stri_count_words(description)) %>%
+                mutate(word_count = tidyr::replace_na(word_count, 0)) %>%
+                # magical phrase in description
+                mutate(description_from_publisher = dplyr::case_when(grepl("description from publisher", tolower(description))==T ~ 1,
+                                                                     TRUE ~ 0)) %>%
+                # missingness
+                mutate(missing_minage = dplyr::case_when(is.na(minage) ~ 1,
+                                                         TRUE ~ 0)) %>%
+                mutate(missing_playingtime = dplyr::case_when(is.na(playingtime) ~ 1,
+                                                              TRUE ~ 0))
+}
+
 
 # function to apply transformations to bgg games data from api to get specified tables
 # expects object from get_bgg_games_data bgg api function
@@ -523,136 +747,6 @@ make_bgg_games_features = function(bgg_games_tables) {
 
 
 
-# preprocessing -----------------------------------------------------------
-
-
-# apply some simple preprocessing to games
-tidy_games = function(games) {
-        
-        # apply consistent prep to full table
-        prepped =
-                analysis_games %>%
-                # change zeros to missingness
-                mutate_at(
-                        vars(c("yearpublished",
-                               "averageweight",
-                               "average",
-                               "bayesaverage",
-                               "usersrated",
-                               "stddev",
-                               "minplayers",
-                               "maxplayers",
-                               "playingtime",
-                               "minplaytime",
-                               "maxplaytime")),
-                        ~ na_if(., 0)) %>%
-                # change some integers to numeric
-                mutate_at(
-                        vars(c("minage",
-                               "minplayers",
-                               "maxplayers",
-                               "playingtime",
-                               "minplaytime",
-                               "maxplaytime")),
-                        as.numeric
-                )
-        
-        return(prepped)
-        
-}
-
-
-# creates tidied games dataset for analysis
-split_games = function(prepped,
-                       end_train_year,
-                       min_ratings) {
-        
-        # training set
-        # removes unreleased games
-        # then removes games with data quality issues (drop, missinginess on yearpublished, etc)
-        train = prepped %>%
-                # filter to year
-                filter(yearpublished <= end_train_year) %>%
-                # drop games that weren't released or have data quality issues
-                filter(!(game_id %in% c(
-                        unreleased_games$game_id,
-                        drop_games$game_id))
-                ) %>%
-                # filter out games with missingness on yearpublished
-                filter(!is.na(yearpublished)) %>%
-                # filter out games with missingness on average weight
-                #  filter(!is.na(averageweight) & averageweight!=0) %>%
-                # filter our kickstarter editions and big box editions
-                #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
-                # filter to games with at least X votes
-                filter(usersrated >= min_ratings) %>%
-                # set yearpublished to numeric
-                mutate(yearpublished = as.numeric(yearpublished)) %>%
-                # get description
-                left_join(., 
-                          game_descriptions %>%
-                                  select(game_id, description),
-                          by = c("game_id")) %>%
-                select(game_id,
-                       name,
-                       yearpublished,
-                       image,
-                       thumbnail,
-                       averageweight,
-                       average,
-                       bayesaverage,
-                       usersrated,
-                       minage,
-                       minplayers,
-                       maxplayers,
-                       playingtime,
-                       minplaytime,
-                       maxplaytime,
-                       description,
-                       load_ts)
-        
-        # validation set
-        # games published after training year
-        # still excludes those with key data quality issues (meet drop criteria; missingness on yearpublished)
-        # but, keeps games with missigness on average weight
-        # and applies no minimum ratings filter
-        valid = 
-                prepped %>%
-                filter(yearpublished > end_train_year) %>%
-                # drop games that weren't released or have data quality issues
-                filter(!(game_id %in% c(
-                        unreleased_games$game_id,
-                        drop_games$game_id))
-                ) %>%
-                # filter out games with missingness on yearpublished
-                filter(!is.na(yearpublished)) %>%
-                # set yearpublished to numeric
-                mutate(yearpublished = as.numeric(yearpublished)) %>%
-                # get description
-                left_join(., 
-                          game_descriptions %>%
-                                  select(game_id, description),
-                          by = c("game_id")) %>%
-                select(all_of(names(train)))
-        
-        # games not in train or valid
-        other = 
-                prepped %>%
-                filter(!(game_id %in% c(train$game_id, valid$game_id))) %>%
-                # get description
-                left_join(., 
-                          game_descriptions %>%
-                                  select(game_id, description),
-                          by = c("game_id")) %>%
-                select(all_of(names(train)))
-        
-        
-        return(list("train_games" = train,
-                    "valid_games" = valid,
-                    "other_games" = other))
-        
-        
-}
 
 
 # estimating partial effects ----------------------------------------------
@@ -671,23 +765,24 @@ split_games = function(prepped,
 # game_publishers
 # game_artists
 
-# categorical = g
-estimate_partial_effects = function(train_games,
+estimate_partial_effects = function(games,
                                     games_categorical,
                                     outcome = 'bayesaverage',
                                     min_coef = 0.45,
                                     min_games = 5) {
         
-        message(paste(nrow(train_games), "games in dataset through", max(train_games$yearpublished, na.rm=T)))
+        # make symbolic
+        # message number of games included
+        message(paste(nrow(games), "games in dataset through", max(games$yearpublished, na.rm=T)))
         
-        # get designer dummies
-        # filter to only games in tidy games
-        # set minimum number of games
+        # message number of games after filtering
+        message(paste(nrow(games %>% filter(!is.na(!!rlang::sym(outcome)))), "games without missingness on", outcome))
         
+        # set minimum number of games by category
         message("preparing data...")
         games_categorical = 
                 games_categorical %>%
-                filter(game_id %in% train_games$game_id) %>%
+                filter(game_id %in% games$game_id) %>%
                 group_by(id, value) %>%
                 mutate(num_games = n_distinct(game_id)) %>%
                 ungroup() %>%
@@ -705,9 +800,11 @@ estimate_partial_effects = function(train_games,
                 games_categorical %>%
                 pivot_categorical_variables()
         
-        # now join this with outcome
+        # now join games with outcome
         data = 
-                train_games %>%
+                games %>%
+                # outcome cannot be NA
+                filter(!is.na(!!rlang::sym(outcome)))%>%
                 select(game_id, name, yearpublished, averageweight, average, bayesaverage, usersrated) %>%
                 left_join(.,
                           games_categorical_pivoted,
@@ -719,7 +816,7 @@ estimate_partial_effects = function(train_games,
         # modeling ----------------------------------------------------------------
         
         # model
-        # penalized regression
+        # lasso 
         glmnet_reg_mod = parsnip::linear_reg(mixture = 1, 
                                              penalty = tune::tune(),
                                              engine = 'glmnet')
@@ -731,7 +828,7 @@ estimate_partial_effects = function(train_games,
         # folds for tuning
         set.seed(1999)
         folds = vfold_cv(data,
-                         strata = usersrated,
+                         strata = !!outcome,
                          v = 5)
         
         # specify regression metrics
@@ -760,7 +857,7 @@ estimate_partial_effects = function(train_games,
                 step_mutate(published_prior_1900 = dplyr::case_when(yearpublished < 1900 ~ 1,
                                                                     TRUE ~ 0)) %>%
                 # then truncate to post 1900
-                step_mutate(year = case_when(yearpublished < 1900 ~ 1900,
+                step_mutate(year = dplyr::case_when(yearpublished < 1900 ~ 1900,
                                              TRUE ~ yearpublished)) %>%
                 # then, add spline for truncated yearpublished
                 step_ns(year,
