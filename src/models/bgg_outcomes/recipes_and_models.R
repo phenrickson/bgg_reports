@@ -1,4 +1,4 @@
-# what: build recipes and model specifications for modeling games data
+# what: build recipes and model specifications for modeling bgg outcomes
 
 # dependencies:
 # preprocessing.R
@@ -20,6 +20,7 @@ base_recipe_func = function(data,
                                "load_ts",
                                "average",
                                "usersrated",
+                               "log_usersrated",
                                "averageweight",
                                "bayesaverage"),
                         new_role = "id") %>%
@@ -35,6 +36,16 @@ base_recipe_func = function(data,
         
 }
 
+# recipe to downsample based on user threshold
+downsample_recipe = function(recipe) {
+        
+        recipe %>%
+        step_mutate(threshold = factor(dplyr::case_when(usersrated >=30 ~ 'in', usersrated < 30 ~ 'out'))) %>% 
+                themis::step_downsample(threshold,
+                                        under_ratio = tune::tune())
+        
+}
+
 # additional preprocessing
 # impute missigness on playing time via median
 preproc_recipe_func = function(recipe) {
@@ -44,6 +55,10 @@ preproc_recipe_func = function(recipe) {
                                    minplayers,
                                    maxplayers,
                                    minage) %>% # medianimpute numeric predictors
+                # truncate minage
+                step_mutate(minage = dplyr::case_when(minage > 18 ~ 18,
+                                                      minage < 0 ~ 0,
+                                                      TRUE ~ minage)) %>%
                 # truncate player counts
                 step_mutate(minplayers = dplyr::case_when(minplayers > 10 ~ 10,
                                                           TRUE ~ minplayers)) %>%
@@ -66,18 +81,16 @@ preproc_recipe_func = function(recipe) {
 impute_averageweight_recipe_func = function(recipe) {
         
         recipe %>%
+                update_role(averageweight,
+                            new_role = 'predictor') %>%
                 # impute averageweight inside of recipe via a simpler linear model
-                step_impute_linear(
-                        impute_with = imp_vars(all_predictors(),
-                                               # remove creator variables
-                                               -starts_with("pub_"),
-                                               -starts_with("des_"),
-                                               -starts_with("art_"))
-                ) %>%
-                # force averageweight predictions to be within bound
-                step_mutate(averageweight = dplyr::case_when(averageweight > 5 ~ 5,
-                                                      averageweight < 1 ~ 1,
-                                                      TRUE ~ averageweight))
+                step_impute_bag(averageweight,
+                                   impute_with = imp_vars(all_predictors(),
+                                                          # remove creator variables
+                                                          -starts_with("pub_"),
+                                                          -starts_with("des_"),
+                                                          -starts_with("art_"))
+                )
         
 }
 
@@ -128,21 +141,10 @@ pca_recipe_func = function(recipe) {
 
 # workflows and recipes ---------------------------------------------------
 
-library(poissonreg)
-
 # linear regression
 lm_spec <-
         linear_reg(mode = "regression") %>%
         set_engine("lm")
-
-# # poisson regression
-# poisson_spec = poisson_reg(mode = "regression",
-#                         penalty = tune::tune()) %>%
-#         set_engine("glmnet")
-# 
-# # zero inflated poisson
-# zeroinfl_spec = poisson_reg(mode = "regression") %>%
-#         set_engine("zeroinfl")
 
 # penalized logistic regression
 glmnet_spec <- 
@@ -198,3 +200,73 @@ xgb_grid =
                 learn_rate(),
                 size = 30
         )
+
+
+# metrics and controls ----------------------------------------------------
+
+# # specify regression metrics
+reg_metrics<-metric_set(yardstick::rmse,
+                        yardstick::mae,
+                        yardstick::mape,
+                        yardstick::rsq)
+
+# control for resamples
+ctrl <- control_resamples(save_pred = TRUE, 
+                          save_workflow = T,
+                          allow_par = T,
+                          verbose = T,
+                          parallel_over = "resamples")
+
+# control for racing
+race_ctrl = 
+        finetune::control_race(
+                save_pred = TRUE,
+                parallel_over = "resamples",
+                verbose = TRUE,
+                verbose_elim = TRUE,
+                save_workflow = T
+        )
+
+# control for sim_anneal
+sim_anneal_ctrl = 
+        finetune::control_sim_anneal(
+                verbose = T,
+                verbose_iter = T,
+                save_pred = T,
+                save_workflow = T,
+                parallel_over = "resamples")
+
+
+# functions for creating workflows/workflowsets ---------------------------
+
+# creates custom training set and resamples given data and outcome
+create_train_and_resamples = function(data, outcome) {
+        
+        if (colSums(is.na(data[,paste(outcome)])) > 0) {
+                
+                stop(paste("missingness in", outcome))
+                
+        }
+        
+        message(paste("creating resamples for", outcome, "with", nrow(data), "obs"))
+        
+        set.seed(1999)
+        resamples = vfold_cv(data,
+                             v = 5,
+                             strata = !!rlang::sym(outcome))
+        
+        return(list("training" = data,
+                    "resamples" = resamples))
+        
+}
+
+# creates workflow given model and recipe
+create_workflow = function(recipe, model) {
+        
+        workflow() %>%
+                add_recipe(recipe) %>%
+                add_model(model)
+        
+}
+
+

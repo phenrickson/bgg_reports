@@ -1,4 +1,4 @@
-# what: pulls together datasets and applies preprocessing conditional on train/validation split
+# what: pull together datasets and applies preprocessing conditional on train/validation split
 
 # dependencies:
 # load analysis tables (locally) or run query
@@ -66,6 +66,7 @@ processed_board = board_folder(here::here("data", "processed"), versioned = T)
 publisher_allow_list = processed_board %>% pin_read("publisher_allow_list")
 
 
+
 # functions ---------------------------------------------------------------
 
 
@@ -73,8 +74,8 @@ publisher_allow_list = processed_board %>% pin_read("publisher_allow_list")
 source(here::here("src", "features", "make_features_functions.R"))
 
 
-# data splitting -----------------------------------------------------------
 
+# data splitting -----------------------------------------------------------
 
 # use tidy and split games function to designate train test split
 tidied_games = 
@@ -83,17 +84,25 @@ tidied_games =
         # apply custom split on training year, filtering to minimum ratings
         split_games(.,
                     end_train_year = end_train_year,
-                    min_ratings = 30)
+                    min_ratings = 0)
         
 # get train
 train_games = tidied_games$train_games
 
+
+# set end valid year
+end_valid_year = end_train_year +2
+
 # get valid
-valid_games = tidied_games$valid_games
+valid_games = tidied_games$valid_games %>%
+        filter(yearpublished <= end_valid_year)
+
+# get test
+test_games = tidied_games$valid_games %>%
+        filter(yearpublished > end_valid_year)
 
 # get all other
 other_games = tidied_games$other_games
-
 
 
 # filter training set with hurdle model -----------------------------------------------------
@@ -153,7 +162,7 @@ train =
         # apply preprocessing
         preprocess_categorical_games() %>%
         # log transform usersrated
-        mutate(usersrated = log1p(usersrated))
+        mutate(log_usersrated = log1p(usersrated))
 
 # validation
 valid = 
@@ -168,7 +177,22 @@ valid =
         # apply preprocessing
         preprocess_categorical_games() %>%
         # log transform usersrated
-        mutate(usersrated = log1p(usersrated))
+        mutate(log_usersrated = log1p(usersrated))
+
+# test
+test = 
+        test_games %>%
+        # join with categorical features
+        left_join(.,
+                  categorical_features,
+                  by = c("game_id")) %>%
+        # replace NAs in any of the categorical dummies with 0s
+        mutate_at(vars(any_of(names(categorical_features))),
+                  replace_na, 0) %>%
+        # apply preprocessing
+        preprocess_categorical_games() %>%
+        # log transform usersrated
+        mutate(log_usersrated = log1p(usersrated))
 
 
 # other
@@ -184,7 +208,7 @@ other =
         # apply preprocessing
         preprocess_categorical_games() %>%
         # log transform usersrated
-        mutate(usersrated = log1p(usersrated))
+        mutate(log_usersrated = log1p(usersrated))
 
 # categorical blueprint
 rm(list=setdiff(ls(), c("categorical_mapping",
