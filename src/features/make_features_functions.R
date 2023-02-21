@@ -20,6 +20,7 @@ tidy_games = function(games) {
                                "stddev",
                                "minplayers",
                                "maxplayers",
+                               "minage",
                                "playingtime",
                                "minplaytime",
                                "maxplaytime")),
@@ -53,9 +54,13 @@ split_games = function(games,
                 filter(yearpublished <= end_train_year) %>%
                 # drop games that weren't released or have data quality issues
                 filter(!(game_id %in% c(
-                        unreleased_games$game_id,
-                        drop_games$game_id))
+                        unreleased_games$game_id))
                 ) %>%
+                # )))
+                # filter(!(game_id %in% c(
+                #         unreleased_games$game_id,
+                #         drop_games$game_id))
+                # ) %>%
                 # filter out games with missingness on yearpublished
                 filter(!is.na(yearpublished)) %>%
                 # filter to games with at least X votes
@@ -218,6 +223,8 @@ hurdle_prep = function(games,
                 
                 # join games with categorical dummies
                 games %>%
+                        select(-starts_with("cat_"),
+                               -starts_with("mec_")) %>%
                         left_join(.,
                                   hurdle_categorical,
                                   by = c("game_id")) %>%
@@ -289,24 +296,27 @@ create_categorical_variables = function(train_games) {
                 filter(n_games > n) %>%
                 distinct(type, id, value)
         
-        
         # estimates for designers and artists to reduce the cardinality
-        message("fitting a lasso to create features for game designers...")
-        designer_list = 
+        message("fitting a lasso to select game designers and artists...")
+        designer_artist_effects = 
                 estimate_partial_effects(train_games,
-                                         game_designers,
+                                         bind_rows(game_designers,
+                                                   game_artists),
                                          outcome = 'bayesaverage',
+                                         min_coef = .15,
                                          min_games = 5) %$%
-                partial_effects %>%
+                partial_effects
+        
+        # get list of designers
+        designer_list = 
+                designer_artist_effects %>%
+                filter(type == 'designer') %>%
                 pull(id)
         
-        message("fitting a lasso to create features for game artists...")
-        artist_list =
-                estimate_partial_effects(train_games,
-                                         game_artists,
-                                         outcome = 'bayesaverage',
-                                         min_games = 5) %$%
-                partial_effects %>%
+        # get list of artists
+        artist_list = 
+                designer_artist_effects %>%
+                filter(type == 'artist') %>%
                 pull(id)
         
         # designers
@@ -783,7 +793,7 @@ estimate_partial_effects = function(games,
         games_categorical = 
                 games_categorical %>%
                 filter(game_id %in% games$game_id) %>%
-                group_by(id, value) %>%
+                group_by(type, id, value) %>%
                 mutate(num_games = n_distinct(game_id)) %>%
                 ungroup() %>%
                 filter(num_games > min_games)
@@ -861,7 +871,7 @@ estimate_partial_effects = function(games,
                                              TRUE ~ yearpublished)) %>%
                 # then, add spline for truncated yearpublished
                 step_ns(year,
-                        deg_free = 9) %>%
+                        deg_free = 5) %>%
                 # then, convert averageweight to 0 1
                 step_range(averageweight, min = 0, max =1) %>%
                 # remove zero variance predictors
@@ -923,7 +933,7 @@ estimate_partial_effects = function(games,
         coefs = wflow_fits %>%
                 select(outcome, coefs) %>%
                 unnest(coefs) %>%
-                filter(!grepl("yearpublished|averageweight|Intercept", term)) %>%
+                filter(!grepl("year_|averageweight|Intercept", term)) %>%
                 # exponentiate users rated (logged outcome)
                 mutate(estimate = case_when(outcome == 'usersrated' ~ (exp(estimate)-1),
                                             TRUE ~ estimate)) %>%
@@ -937,6 +947,11 @@ estimate_partial_effects = function(games,
                 coefs %>% 
                 # impose an (admittedly arbitrary) minimum coefficient to keep
                 filter(abs(estimate) > abs(min_coef)) %>%
+                # strip out
+                mutate(type = str_sub(term, 0, 3L)) %>%
+                mutate(type = case_when(type == 'des' ~ 'designer',
+                                        type == 'pub' ~ 'publisher',
+                                        type == 'art' ~ 'artist')) %>%
                 mutate(term = str_sub(term, start = 5L, end = -1L)) %>%
                 # exponentitate if using (logged) usersrated
                 mutate(estimate = case_when(outcome == 'usersrated' ~ (exp(estimate)-1),
@@ -944,7 +959,8 @@ estimate_partial_effects = function(games,
                 left_join(.,
                           games_categorical_mapping %>%
                                   select(type, tidied, value, id),
-                          by = c('term' = 'tidied')) %>%
+                          by = c('term' = 'tidied',
+                                 'type' = 'type')) %>%
                 select(outcome, type, id, value, term, estimate)
         
         out = list("partial_effects" = partial_effects,
