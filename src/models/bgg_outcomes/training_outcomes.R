@@ -10,6 +10,7 @@
 # impute averageweight ----------------------------------------------------
 
 # impute averageweight in training set
+# filter to train only on games with a geek rating (at least 30 user ratings)
 train_imputed = impute_averageweight(train %>%
                                      filter(!is.na(bayesaverage)))
 
@@ -73,7 +74,8 @@ create_preprocessors = function(data, outcome) {
         corr_recipe = 
                 norm_recipe %>%
                 step_corr(all_numeric_predictors(),
-                          threshold = .9)
+                          threshold = .9) %>%
+                step_nzv(all_numeric_predictors())
         
         # add correlation filter
         preprocessors = list(
@@ -131,6 +133,7 @@ tune_workflow_sets = function(workflow_sets,
                 workflow_map(
                         fn = method,
                         seed = 1999,
+                        metrics = reg_metrics,
                         resamples = resamples,
                         control = race_ctrl)
         
@@ -204,24 +207,24 @@ build_tune_and_collect_workflows = function(data, outcome, models) {
 }
 
 # select from workflow sets, finalize, and fit
-select_and_finalize_workflow = function(workflow_obs) {
+select_and_finalize_workflow = function(workflow_objs) {
         
         # get best mod
         best_mod = 
-                average_workflow_objs$metrics %>% 
+                workflow_objs$metrics %>% 
                 filter(rank ==1 & .metric == 'rmse') %>% 
                 pull(wflow_id)
         
         # get best tune
         best_tune =
-                average_workflow_objs$workflows_res %>%
+                workflow_objs$workflows_res %>%
                 filter(wflow_id == best_mod) %>%
                 select(wflow_id, best_tune) %>%
                 unnest(best_tune)
         
         # finalize
         wflow = 
-                average_workflow_objs$workflows_res %>%
+                workflow_objs$workflows_res %>%
                 extract_workflow(id = best_mod) %>%
                 finalize_workflow(parameters = best_tune)
         
@@ -234,64 +237,78 @@ select_and_finalize_workflow = function(workflow_obs) {
 
 
 # create and tune workflows for average
-# train and evaluate on games with at least 25 user ratings
 average_workflow_objs = 
         build_tune_and_collect_workflows(
-                data = impute_averageweight(train) %>% 
-                        filter(usersrated > 25),
+                data = train_imputed,
                 outcome = 'average',
                 models = models)
 
 # create and tune workflows for usersrated
-# train and evaluate on games with at least 25 user ratings
 usersrated_workflow_objs = 
         build_tune_and_collect_workflows(
-                data = impute_averageweight(train) %>% 
-                        filter(usersrated > 25),
+                data = train_imputed,
                 outcome = 'log_usersrated',
                 models = models)
 
 # create and tune workflows for usersrated
 bayesaverage_workflow_objs = 
         build_tune_and_collect_workflows(
-                data = impute_averageweight(train) %>% 
-                        filter(!is.na(bayesaverage)),
+                data = train_imputed,
                 outcome = 'bayesaverage',
                 models = models)
+
+# save predictions and results
+results_board = pins::board_folder(here::here("models", "results"), versioned = T)
+
+# create table with workflow results
+train_results = tribble(~outcome, ~metrics, ~ predictions,
+        'bayesaverage', bayesaverage_workflow_objs$metrics, bayesaverage_workflow_objs$predictions,
+        'average', average_workflow_objs$metrics, average_workflow_objs$predictions,
+        'usersrated', usersrated_workflow_objs$metrics, usersrated_workflow_objs$predictions)
+        
+# save with versioning
+pin_write(board = results_board,
+          x = train_results,
+          name = "outcomes_train_results",
+          type = 'rds',
+          tags = c("results", "metrics"),
+          description = "results of training workflow sets on bgg outcomes")
 
 
 # finalize workflows --------------------------------------------------------
 
 ### average
 # finalize workflow
-average_wflow =
-        select_and_finalize_workflow(average_workflow_objs)
-
-# fit
-average_fit =
-        average_wflow %>%
+average_model =
+        select_and_finalize_workflow(average_workflow_objs) %>%
         fit(average_workflow_objs$training)
 
 ### usersrated
 # finalize workflow
-usersrated_wflow =
-        select_and_finalize_workflow(usersrated_workflow_objs)
-
-# fit
-usersrated_fit =
-        usersrated_wflow %>%
+usersrated_model =
+        select_and_finalize_workflow(usersrated_workflow_objs) %>%
         fit(usersrated_workflow_objs$training)
 
-
 ### bayesaverage
-bayesaverage_wflow =
-        select_and_finalize_workflow(bayesaverage_workflow_objs)
-
-# fit
-bayesaverage_fit =
-        bayesaverage_wflow %>%
+bayesaverage_model =
+        select_and_finalize_workflow(bayesaverage_workflow_objs) %>%
         fit(bayesaverage_workflow_objs$training)
 
+# combine into one object
+train_models = tribble(~outcome, ~workflow,
+                     "average", average_model,
+                     "usersrated", usersrated_model,
+                     "bayesaverage", bayesaverage_model)
+
+# get model board
+model_board = board_folder(here::here("models", "board"))
+
+# pin
+pin_write(model_board,
+          train_models,
+          name = "outcomes_models",
+          description = paste("models trained to predict bgg outcomes on games published through", end_train_year),
+          versioned=T)
 
 # average_results %$% 
 #         predictions %>%

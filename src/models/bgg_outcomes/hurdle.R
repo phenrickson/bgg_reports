@@ -469,6 +469,9 @@ testthat::test_that("vetiver model does not error due to package",
 # store
 vetiver::vetiver_pin_write(model_board, vetiver_hurdle)
 
+# deploy
+
+
 
 # library(probably)
 # hurdle_preds %>%

@@ -73,8 +73,10 @@ preproc_recipe_func = function(recipe) {
                 step_log(time_per_player,
                          playingtime,
                          offset = 1) %>%
-                # normalize
-                step_normalize(all_numeric_predictors())
+                # truncate yearpublished
+                step_mutate(year = dplyr::case_when(yearpublished < 1900 ~ 1900,
+                                                    TRUE ~ yearpublished),
+                            role = "predictor")
 }
 
 # impute averageweight inside of a recipe
@@ -177,26 +179,23 @@ cart_grid <-
 # xgbTree
 xgb_spec <-
         boost_tree(
-                trees = tune(),
-                #  sample_size = tune(),
+                trees = 500,
                 min_n = tune(),
-                mtry = tune(), # randomness
+                sample_size = tune(),
                 learn_rate = tune(),
                 tree_depth = tune(),
                 stop_iter = 50) %>%
         set_mode("regression") %>%
         set_engine("xgboost",
-                   eval_metric = 'rmse',
-                   counts = F) # for mtry to be in [0,1]
+                   eval_metric = 'rmse')
 
 # # set up grid for tuning
 xgb_grid = 
         grid_latin_hypercube(
-                trees = trees(range = c(250, 500)),
                 tree_depth = tree_depth(range = c(2L, 9L)),
                 min_n(),
-                #   sample_size = sample_prop(),
-                mtry = mtry_prop(c(0.25, 1)),
+                sample_size = sample_prop(),
+              #  mtry = mtry_prop(c(0.25, 1)),
                 learn_rate(),
                 size = 30
         )

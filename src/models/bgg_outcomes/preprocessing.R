@@ -74,7 +74,6 @@ publisher_allow_list = processed_board %>% pin_read("publisher_allow_list")
 source(here::here("src", "features", "make_features_functions.R"))
 
 
-
 # data splitting -----------------------------------------------------------
 
 # use tidy and split games function to designate train test split
@@ -215,5 +214,6 @@ rm(list=setdiff(ls(), c("categorical_mapping",
                         "end_train_year",
                         "train",
                         "valid",
+                        "test",
                         "other")))
 
