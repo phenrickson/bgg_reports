@@ -303,8 +303,8 @@ create_categorical_variables = function(train_games) {
                                          bind_rows(game_designers,
                                                    game_artists),
                                          outcome = 'bayesaverage',
-                                         min_coef = .15,
-                                         min_games = 5) %$%
+                                         min_coef = .25,
+                                         min_games = 10) %$%
                 partial_effects
         
         # get list of designers
