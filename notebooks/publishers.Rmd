@@ -135,15 +135,19 @@ summary_data %>%
 
 ## Publisher Partial Effects
 
-Which publishers have the largest effect on a game's average? Users rated? 
+Which publishers have the largest effect on a game's average?
 
 We could simply look at the games published by each publisher and then take their average rating/average number of user ratings. However, this doesn't account for the fact that some publishers design more complex games than others, or that recently published games tend to have higher averages. 
 
-To get an estimate of each publisher's partial effect on an outcome, I regress
+To get an estimate of each publisher's partial effect on an outcome, I run penalized regressions lasso) of the BGG average/usersrated on dummies for individual game publishers along with the game's weight and effects for year published.
 
-That is, which publisher has the largest partial effect on a game's average rating conditional on 
+I handle time effects in two different ways, first creating an indicator for games published before 1900, then fitting cubic splines to the truncated publishing range of years 1900 to present.
 
-```{r partial effects of publishers}
+$$ Average = \beta_0 + Weight * \beta_1 + Publisher_1 * \beta_2 + Publisher_2 * \beta_3 * Publisher_k ... Publisher_n * \beta_n + YearPublished$$
+
+That is, which publisher has the largest partial effect on a game's average rating conditional on average weight and time?
+
+```{r partial effects of publishers, include=F}
 
 dat = tidy_games %>%
         filter(yearpublished <= train_year) %>%
@@ -290,27 +294,74 @@ wflow_fits = dat_prepped %>%
 
 ```
 
-```{r extract coefficients, layout="l-body-outset"}
+```{r extract coefficients and make table, layout="l-body-outset"}
+
+seq_average = seq(-.1, .1, .05)
+seq_usersrated = seq(0, 0.5, .05)
 
 wflow_fits %>%
         select(outcome, coefs) %>%
         unnest() %>%
-        mutate(estimate = case_when(outcome == 'usersrated' ~ (exp(estimate)-1)*100,
+        filter(!grepl("yearpublished|averageweight|Intercept", term)) %>%
+        mutate(estimate = case_when(outcome == 'usersrated' ~ (exp(estimate)-1),
                                     TRUE ~ estimate)) %>%
         mutate_if(is.numeric, round, 3) %>%
+        # get display name
         arrange(desc(estimate)) %>%
-        filter(!grepl("yearpublished", term)) %>%
-        left_join(., 
+        left_join(.,
                   dat %>%
                           transmute(term = value,
-                                    display_value) %>%
+                                    display_value,
+                                    num_games) %>%
                           distinct,
                   by = c("term")) %>%
         filter(!is.na(display_value)) %>%
         mutate(term = case_when(is.na(display_value )~ term,
-                                      TRUE ~ display_value)) %>%
-        select(outcome, term, estimate) %>%
-        rmarkdown::paged_table()
+                                TRUE ~ display_value)) %>%
+        select(num_games, outcome, term, estimate) %>%
+        # pivot
+        pivot_wider(names_from = c("outcome"),
+                    values_from = c("estimate")) %>%
+        # round usersrated
+        mutate(usersrated = round(usersrated, 2)) %>%
+        arrange(desc(num_games)) %>%
+        transmute(Publisher = term,
+                  Games = num_games,
+                  Average = average,
+                  Ratings = usersrated) %>%
+        DT::datatable(escape=F,
+                      rownames = F,
+                      extensions = c('Responsive'),
+                      #    caption = 'ZoomInfo Companies - Client Probabilities by COE',
+                      filter = list(position = 'top'),
+                      options = list(pageLength = 15,
+                                     initComplete = htmlwidgets::JS(
+                                             "function(settings, json) {",
+                                             paste0("$(this.api().table().container()).css({'font-size': '", '8pt', "'});"),
+                                             "}"),
+                                     scrollX=F,
+                                     columnDefs = list(
+                                             list(className = 'dt-center',
+                                                  visible=T,
+                                                  targets=c("Publisher",
+                                                            "Games",
+                                                            "Average",
+                                                            "Ratings"))
+                                     )
+                      )
+        ) %>%
+        # usersrated
+        formatStyle(c(
+                "Ratings"),
+                #     blue = 'white',
+                backgroundColor = styleInterval(seq_usersrated,
+                                                blueRampSeq(length(seq_usersrated)+1))) %>%
+        # average
+        formatStyle(c(
+                "Average"),
+                #     blue = 'white',
+                backgroundColor = styleInterval(seq_average,
+                                                colorRampDiv(length(seq_average)+1)))
 
 ```
 
