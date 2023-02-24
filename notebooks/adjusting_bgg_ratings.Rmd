@@ -8,52 +8,51 @@ output:
     keep_md: no
     fig.caption: yes
 params:
-  end_training_year: 2021
-  min_ratings: 100
+  end_train_year: 2021
+  min_ratings: 30
 ---
 
 ```{r global settings,include =F}
 
-knitr::opts_chunk$set(echo = F,
-                      warning=F,
-                      message=F,
-                      dev="png",
-                      fig.width = 10,
-                      fig.height = 6)
+source(here::here("src", "helpers", "exploratory_setup.R"))
 
-options(knitr.duplicate.label = "allow")
+```
 
-options(scipen=999)
+
+```{r additional packges and functions, include = F}
 
 # load packages to be used
-source(here::here("scripts/load_packages.R"))
+library(tidyverse)
+library(ggthemes)
+library(ggrepel)
+#source(here::here("scripts/load_packages.R"))
 
 # additional libraries
 # parallel
 library(doParallel)
 library(parallelly)
-library
 
 # for stan
 library(brms)
 library(broom.mixed)
 
 # load custom functions to be used
-source(here::here("functions/theme_phil.R"))
-source(here::here("functions/tidy_name_func.R"))
-source(here::here("functions/pivot_and_dummy_types.R"))
-source(here::here("functions/bayesaverage_col_func.R"))
-source(here::here("functions/average_col_func.R"))
-source(here::here("functions/complexity_col_func.R"))
-rm(a)
+source(here::here("src", "helpers", "theme_phil.R"))
+source(here::here("src", "helpers", "tidy_name_func.R"))
+source(here::here("src", "helpers", "pivot_and_dummy_types.R"))
+source(here::here("src", "helpers", "bayesaverage_col_func.R"))
+source(here::here("src", "helpers", "average_col_func.R"))
+source(here::here("src", "helpers", "complexity_col_func.R"))
 
 ```
 
-```{r flextable settings, echo=F, warning=F, message=F, results='hide'}
+```{r flextable settings, include =F}
 
 #library(webshot2)
 library(flextable)
 library(gt)
+library(ggpubr)
+
 set_flextable_defaults(theme_fun = theme_alafoli,
                        font.color = "black",
                        padding.bottom = 6, 
@@ -62,37 +61,7 @@ set_flextable_defaults(theme_fun = theme_alafoli,
                        padding.right = 6,
                        background.color = "white")
 
-source(here::here("functions/theme_phil.R"))
-
 ```
-
-```{r connect to big query, include =F}
-
-# connect to gcp
-source(here::here("functions", "connect_to_gcp.R"))
-
-```
-
-
-```{r pull tables, include =F}
-
-# query table of game info to most recent load
-analysis_games <-bq_table_download(bq_project_query(PROJECT_ID,
-                                                    'SELECT * FROM bgg.analysis_games')) %>%
-        # change integers to numeric
-        mutate_if(is.integer, as.numeric) %>%
-        # change zeroes to NA
-        mutate_at(c("averageweight",
-                    "playingtime",
-                    "minplaytime",
-                    "maxplaytime",
-                    "yearpublished"),
-                  ~ case_when(. == 0 ~ NA_real_,
-                              TRUE ~ .)) %>%
-        arrange(desc(bayesaverage))
-
-```
-
 
 ```{r create caption}
 
@@ -215,13 +184,14 @@ active_games %>%
         my_caption+
         scale_size_area(limits = c(1, 200000),
                         labels = scales::label_number_auto())
+
 ```
 
 ## What is the Geek Rating?
 
 Now, so far we've just looked at the average rating, which is simply the average of community ratings for a given game. Most people care about the Geek rating, which is combination of the community average and the number of votes. In order to get a high Geek rating, a game need to both be well rated (a high average) *and* have a high enough number of user ratings. We can get a sense of how games map on both of these dimensions via a visualization I have come to dub 'the mountain'.
 
-```{r plot games by average and user ratings, fig.height=8, fig.width=10}
+```{r plot games by average and user ratings}
 
 active_games %>%
         ggplot(., aes(x=average,
@@ -408,7 +378,7 @@ estimates %>%
 
 It doesn't look to be case, but it is interesting looking at the games where the actual geek rating is *super* different than my estimated version. Alien: USCSS Nostromo, The Fantasy Trip: Legacy Edition and the Binding of Isaac have really big differences, and if we look on BGG they all seem to either have a disproportionate amount of 1s or 10s. I wonder if in the Geek rating they filter out ratings from accounts that are flagged as just spamming ratings?
 
-I've also seen people wonder whether they add more ratings to older/newer games. But I haven't seen any real evidence of a difference by the yearpublished.
+I've also seen people wonder whether they add more ratings to older/newer games. But I haven't seen much evidence of that? Or at least, not resoundingly so.
 
 ```{r look at difference between estimated vs actual}
 
@@ -426,7 +396,9 @@ estimates %>%
         geom_tile(color = 'white')+
         #geom_text(color = 'white', size=2.5)+
         scale_fill_gradient(low = 'blue',
-                            high = 'red')+
+                            high = 'red',
+                            limits = c(0, 0.1),
+                            oob = scales::squish)+
         theme_minimal()+
         facet_wrap(.metric ~.)
 
@@ -443,7 +415,7 @@ rm(estimates)
 
 # Adjusting for Complexity
 
-The geek ratings on BGG are highly influential, but they skew heavily towards very complex games. This means that "normal people" will have a hard time using the games that are highly rated on BGG. 
+The geek ratings on BGG are highly influential, but they skew heavily towards very complex games. This means that "normal people" will have a hard time using the games that are highly rated on BGG.
 
 If we look at the top 100 games on BGG according to the geek ratings, we can see that all generally fall on the heavier side in terms of game complexity.
 
@@ -469,7 +441,9 @@ active_games %>%
         gt() %>%
         tab_options(
                 table.font.size = 12,
-                table.width = pct(80)) %>%
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T) %>%
         data_color(columns = c("bayesaverage"),
                    colors = scales::col_numeric(
                            palette = c("orange","white", "dodgerblue2"),
@@ -497,7 +471,7 @@ To do this, we need the *residuals* from a regression of average rating on compl
 complexity_model<-
         active_games %>%
         filter(yearpublished < 2021) %>%
-        filter(!is.na(averageweight)) %>%
+        filter(!is.na(averageweight) & averageweight != 0) %>%
         nest() %>%
         mutate(model = map(data, ~ lm(average ~ averageweight,
                                       data = .x))) %>%
@@ -513,7 +487,9 @@ complexity_model %>%
         gt() %>%
         tab_options(
                 table.font.size = 14,
-                table.width = pct(80))
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T)
 
 ```
 
@@ -532,7 +508,9 @@ complexity_model %>%
         gt() %>%
         tab_options(
                 table.font.size = 14,
-                table.width = pct(80))
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T)
 
 ```
 
@@ -594,7 +572,9 @@ complexity_model %>%
         gt() %>%
         tab_options(
                 table.font.size = 12,
-                table.width = pct(80)) %>%
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T) %>%
         cols_align(align = c("center"),
                    columns = c("yearpublished",
                                "usersrated",
@@ -651,8 +631,10 @@ complexity_adjusted_ratings %>%
         head(50) %>%
         gt() %>%
         tab_options(
-                table.font.size = 10,
-                table.width = pct(80)) %>%
+                table.font.size = 12,
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T) %>%
         data_color(columns = c("geekrating",
                                "adjustedrating"),
                    colors = scales::col_numeric(
@@ -672,7 +654,7 @@ This gets us a list of games that is wildly different than before, and it's a li
 
 Which games have moved up and down the most? We can look at the difference between the BGG Rank and the Complexity adjusted ranks.
 
-```{r compare adjusted to bgg, fig.height=6, fig.width=10, warning=F, message=F}
+```{r compare adjusted to bgg, fig.height=6, out.width = '100%', warning=F, message=F}
 
 # no labels
 complexity_adjusted_ratings %>%
@@ -745,8 +727,10 @@ complexity_adjusted_ratings %>%
         head(50) %>%
         gt() %>%
         tab_options(
-                table.font.size = 10,
-                table.width = pct(80)) %>%
+                table.font.size = 12,
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T) %>%
         data_color(columns = c("geekrating",
                                "adjustedrating"),
                    colors = scales::col_numeric(
@@ -794,8 +778,10 @@ complexity_adjusted_ratings %>%
         head(50) %>%
         gt() %>%
         tab_options(
-                table.font.size = 10,
-                table.width = pct(80)) %>%
+                table.font.size = 12,
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T) %>%
         data_color(columns = c("geekrating",
                                "adjustedrating"),
                    colors = scales::col_numeric(
@@ -842,12 +828,14 @@ complexity_adjusted_ratings %>%
         arrange(desc(rank_diff)) %>%
         gt() %>%
         tab_options(
-                table.font.size = 10,
-                table.width = pct(80)) %>%
+                table.font.size = 12,
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T) %>%
         data_color(columns = c("rank_diff"),
                    colors = scales::col_numeric(
                            palette = c("red", "white", "deepskyblue1"),
-                           domain = c(-1000, 100))) %>%
+                           domain = c(-1000, 1000))) %>%
                 tab_options(data_row.padding = px(2)) %>%
         opt_row_striping(row_striping = F)
 
@@ -879,6 +867,11 @@ active_games %>%
         group_by(yearpublished) %>%
         gt() %>%
         tab_options(
+                table.font.size = 12,
+                table.width = pct(80),
+                container.overflow.x = T,
+                container.overflow.y = T) %>%
+        tab_options(
                 table.font.size = 10,
                 table.width = pct(80)) %>%
                 tab_options(data_row.padding = px(2)) %>%
@@ -900,7 +893,9 @@ active_games %>%
                   average_usersrated = mean(usersrated),
                   max_usersrated = max(usersrated)) %>%
         mutate(date = as.Date(paste(yearpublished, "01", "01", sep="-"))) %>%
-        melt(id.vars=c("date", "yearpublished")) %>%
+        pivot_longer(cols = -c(yearpublished, date),
+                     names_to = "variable",
+                     values_to = "value") %>%
         ggplot(., aes(x=date, y=value))+
         geom_point()+
         geom_line()+
@@ -920,7 +915,7 @@ I'm not going to argue that this is a fundamental flaw in the rating that the si
 
 If we back to that plot of game averages plotted against logged user ratings, this basically means finding games that are at the top of the 'mountain'. But I've highlighted the games in the top 100 to show that this isn't quite the case with the geek rating. Popularity ends up mattering less than we might want it to, given the relationship between the two components.
 
-```{r show what this means via the mountain, fig.height=8, fig.width=10, warning=F, message=F}
+```{r show what this means via the mountain,  warning=F, message=F}
 
 top_n = 100
 
@@ -1146,7 +1141,7 @@ Adding 100k votes gives us the list of games that more or less maps to the everg
 
 Going back to 'the mountain' visual, what games does this set of rankings end up prioritizing?
 
-```{r show what this means via the mountain for the updated rankings, fig.height=8, fig.width=10, warning=F, message=F}
+```{r show what this means via the mountain for the updated rankings, warning=F, message=F}
 
 active_games %>%
         ggplot(., aes(x=average,
