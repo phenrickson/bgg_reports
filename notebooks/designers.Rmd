@@ -72,11 +72,11 @@ What are the designers of games on BGG and how do they relate to community ratin
 
 Which designers have published the most games on BGG? Which designers are the highest rated? Most popular? 
 
-'Uncredited' is by far the most common listing for designer, so I have excluded it from the following visualization.
+'Uncredited' is by far the most common listing for designer, so I have excluded it from the following visualization. 
 
 ```{r most common designers, warning=F, message=F}
 
-game_designers %>%
+plot = game_designers %>%
         filter(!(value %in% '(Uncredited)')) %>%
         group_by(type, id, value) %>%
         summarize(games = n_distinct(game_id),
@@ -88,7 +88,11 @@ game_designers %>%
                                 rank %in% seq(26, 50) ~ "26-50")) %>%
         mutate(value = abbreviate(value, minlength=25)) %>%
         ggplot(aes(y=reorder(value,games),
-                   x=games))+
+                   x=games,
+                   text = paste(
+                           paste("designer:", reorder(value, games)),
+                           paste("games:", games),
+                           sep = "\n")))+
         geom_col()+
         theme_phil()+
         theme(axis.text.y = element_text(size = 8),
@@ -100,16 +104,20 @@ game_designers %>%
         xlab("Number of Games")+
         my_caption
 
+plotly::ggplotly(plot,
+                 tooltip = 'text')
 
 ```
 
-I'll then plot the distribution of games with the 25 most frequent designers. What designers are typically associated with heavier games? What designer is the highest rated (on average)?
+I'll then plot the distribution of games with the 25 most frequent designers (for games that have achieved at least params$min_ratings ratings). What designers are typically associated with heavier games? What designer is the highest rated (on average)?
 
 ```{r plot designers}
 
 plot_games_by_categorical(game_designers,
                           alpha = 0.25,
-                          25)
+                          25)+
+        geom_boxplot(aes(y = value),
+                     alpha = 0.25)
 
 ```
 

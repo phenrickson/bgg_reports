@@ -1,14 +1,17 @@
 # what: render exploratory markdown reports
 
 # set parameters
-render_params = list(train_year = 2022,
-              min_ratings = 25)
+render_params = list(train_year = 2021,
+              min_ratings = 30)
 
 # outcomes
 rmarkdown::render(input = here::here("notebooks", "outcomes.Rmd"),
                   params = render_params,
                   clean = T,
                   output_dir = here::here("reports", "exploratory"))
+
+rm(list=setdiff(ls(), c("render_params")))
+gc()
 
 # descriptions
 # rmarkdown::render(input = here::here("notebooks", "descriptions.Rmd"),
@@ -21,11 +24,17 @@ rmarkdown::render(input = here::here("notebooks", "designers.Rmd"),
                   clean =T,
                   output_dir = here::here("reports", "exploratory"))
 
+rm(list=setdiff(ls(), c("render_params")))
+gc()
+
 # publishers
-# rmarkdown::render(input = here::here("notebooks", "publishers.Rmd"),
-#                   params = render_params,
-#                   clean =T,
-#                   output_dir = here::here("reports", "exploratory"))
+rmarkdown::render(input = here::here("notebooks", "publishers.Rmd"),
+                  params = render_params,
+                  clean =T,
+                  output_dir = here::here("reports", "exploratory"))
+
+rm(list=setdiff(ls(), c("render_params")))
+gc()
 
 # categories
 rmarkdown::render(input = here::here("notebooks", "categories.Rmd"),
@@ -33,11 +42,17 @@ rmarkdown::render(input = here::here("notebooks", "categories.Rmd"),
                   clean =T,
                   output_dir = here::here("reports", "exploratory"))
 
+rm(list=setdiff(ls(), c("render_params")))
+gc()
+
 # families
 rmarkdown::render(input = here::here("notebooks", "families.Rmd"),
                   params = render_params,
                   clean = T,
                   output_dir = here::here("reports", "exploratory"))
+
+rm(list=setdiff(ls(), c("render_params")))
+gc()
 
 # mechanics
 rmarkdown::render(input = here::here("notebooks", "mechanics.Rmd"),

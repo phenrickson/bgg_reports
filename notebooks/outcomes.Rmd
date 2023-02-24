@@ -79,6 +79,7 @@ The data I'm examining is at the game level, where I observe the BGG community's
 
 tidy_games %>%
         filter(yearpublished <= train_year) %>%
+        filter(bayesaverage != 0) %>%
         transmute(game_id,
                   name,
                   yearpublished,
@@ -331,7 +332,7 @@ tidy_games %>%
 
 ```
 
-More and more games are being published ever year[^ This visualization shows all games published, as opposed to only those that have achieved a minimum number of ratings.] There has been an explosion in the number of new releases in recent years, with many games being published that do not receive many votes and the potential for a higher average score (though a lower geek rating). From this, we can expect that models predicting the average  will exhibit a strong relationship with time.
+More and more games are being published ever year - the visualization below shows all games published instead of those that achieve a minimum number of ratings. There has been an explosion in the number of new releases in recent years, with many games being published that do not receive many votes and the potential for a higher average score (though a lower geek rating). From this, we can expect that models predicting the average  will exhibit a strong relationship with time.
 
 ```{r games by year}
 
@@ -343,8 +344,8 @@ p = analysis_games %>%
         ggplot(aes(x=yearpublished,
                    text = paste0(
                            paste("yearpublished:", round(yearpublished, 0)),
-                           paste("num_games:", round(num_games, 0)),
-                           sep = "\n"),
+                           "\n",
+                           paste("num_games:", round(num_games, 0))),
                    y=num_games))+
         geom_col()+
         theme_phil()+

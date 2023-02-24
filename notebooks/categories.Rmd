@@ -74,7 +74,7 @@ What are the most frequent categories on BGG? How are games within each category
 
 ```{r most common categories, warning=F, message=F}
 
-p = game_categories %>%
+plot = game_categories %>%
         group_by(type, id, value) %>%
         summarize(games = n_distinct(game_id),
                   .groups = 'drop') %>%
@@ -100,7 +100,7 @@ p = game_categories %>%
         ylab("Category")+
         xlab("Number of Games")
 
-plotly::ggplotly(p,
+plotly::ggplotly(plot,
                  tooltip = 'text')
         
 ```

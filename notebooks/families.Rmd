@@ -6,9 +6,10 @@ params:
         min_ratings: 50
 ---
 
-```{r setup, inclue=F, results = 'hide', message=F, warning=F}
+```{r setup, include=F, results = 'hide', message=F, warning=F}
 
 source(here::here("src", "helpers", "exploratory_setup.R"))
+
 
 ```
 
@@ -40,7 +41,7 @@ tidy_games =
         # filter out games with missingness on average weight
         filter(!is.na(averageweight) & averageweight!=0) %>%
         # filter our kickstarter editions and big box editions
-      #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
+        #  filter(!(grepl("kickstarter|big box|mega box|megabox", tolower(name)))) %>%
         # filter to games released prior to current year
         filter(yearpublished < year(Sys.Date())) %>%
         # filter to games with at least X votes
@@ -74,7 +75,7 @@ What are the most frequent families on BGG?
 
 ```{r most common families, warning=F, message=F}
 
-game_families %>%
+plot = game_families %>%
         mutate(value = family_value) %>%
         group_by(type, id, value) %>%
         summarize(games = n_distinct(game_id),
@@ -86,7 +87,11 @@ game_families %>%
                                 rank %in% seq(26, 50) ~ "26-50")) %>%
         mutate(value = abbreviate(value, minlength=25)) %>%
         ggplot(aes(y=reorder(value,games),
-                   x=games))+
+                   x=games,
+                   text = paste(
+                           paste("family:", reorder(value, games)),
+                           paste("games:", games),
+                           sep = "\n")))+
         geom_col()+
         theme_phil()+
         theme(axis.text.y = element_text(size = 8),
@@ -96,11 +101,14 @@ game_families %>%
         scale_x_continuous(breaks = scales::pretty_breaks(n=3))+
         ylab("Family")+
         xlab("Number of Games")
-        
+
+plotly::ggplotly(plot,
+                 tooltip = 'text')
+
 
 ```
 
-For BGG *family* variables, we can consider the hierarchy 
+For BGG *family* variables, we can consider the hierarchy as well and see what the most common values are within each family.
 
 ```{r top within each family}
 
@@ -119,9 +127,9 @@ game_families %>%
         summarize(games = n_distinct(game_id),
                   .groups = 'drop') %>%
         group_by(family_type) %>%
-        slice_max(games, n = 5, with_ties=F) %>%
+        slice_max(games, n = 8, with_ties=F) %>%
         ungroup() %>%
-        mutate(family_value = abbreviate(family_value, minlength=25)) %>%
+        mutate(family_value = abbreviate(family_value, minlength=15)) %>%
         ggplot(aes(y=tidytext::reorder_within(family_value, games, family_type),
                    x=games))+
         geom_col()+
@@ -147,7 +155,7 @@ I'll then plot the distribution of games with the 25 most frequent families. Wha
 ```{r plot families}
 
 plot_games_by_categorical(game_families,
-                             25)
+                          25)
 
 ```
 
@@ -172,7 +180,7 @@ summary_data %>%
 ```
 
 ## Combinations of Families
- 
+
 What are the most frequent pairings of families in games on BGG? The following visualization displays an upset plot of the most frequent combinations of families used in games.
 
 ```{r upset plot}
@@ -185,7 +193,8 @@ upset = game_families %>%
                     values_from = has_type,
                     values_fill = list(has_type = 0)) %>%
         as.data.frame() %>%
-        UpSetR::upset(nsets = 15,
+        UpSetR::upset(nsets = 10,
+                      nintersects = 20,
                       keep.order = T,
                       order.by = c("freq"),
                       mb.ratio = c(0.4, 0.6))
@@ -194,7 +203,7 @@ upset = game_families %>%
 
 The bar chart on the bottom left indicates the number of games in each family. The bar chart on the top indicates the number of games with a **combination** of families. 
 
-```{r print upset, fig.height = 8, out.width='100%'}
+```{r print upset, out.width='100%'}
 
 print(suppressMessages({
         upset
