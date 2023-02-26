@@ -13,23 +13,36 @@ get_user_collection <-
                         require(utils)
                         
                         attempts = 0
-                        retval = try(eval(expr))
+                        
+                        retval = try(eval(expr), silent=T)
+                        
                         while (isError(retval)) {
+                                
                                 attempts = attempts + 1
+                                
                                 if (attempts >= maxErrors) {
                                         msg = paste("too many attempts; stopping search")
                                         stop(msg)
                                 } else {
-                                        msg = paste("retry: no response in in attempt", attempts, "of",  maxErrors)
+                                        msg = paste("retry: no response in attempt", attempts, "of",  maxErrors)
                                        # flog.error(msg)
                                         message(msg)
                                 }
                                 if (sleep > 0) Sys.sleep(sleep)
-                                retval = try(eval(expr))
+                                
+                                suppressWarnings({
+                                        retval = try(eval(expr), silent = T)
+                                })
                         }
                         
+                        message('search completed')
+                        
                         return(retval)
+                        
+                        
                 }
+                
+                message(paste('searching for bgg collection for', username_string))
                 
                 # search for collection up to 10 times; sleep for 10 seconds between requests
                 collection_obj = 
@@ -52,6 +65,8 @@ get_user_collection <-
                                                          "wanttobuy",
                                                          "wishlist",
                                                          "wishlistpriority"))
+                
+                message(paste(nrow(collection_obj$data), 'records found in bgg collection for', username_string))
                 
                 # convert to dataframe
                 collection_data<-collection_obj$data %>%
@@ -77,7 +92,8 @@ get_user_collection <-
                         as_tibble() %>%
                         # order by game id and then desc own
                         arrange(game_id, desc(own))
-                        
+                
+                message('deduplicating collection and returning')
                 
                 # check for duplicated game_ids
                 dupes = which(duplicated(collection_data$game_id)==T)
@@ -87,7 +103,7 @@ get_user_collection <-
                 } else {
                         collection_data_out = collection_data
                 }
-       
+                
                 # convert to tibble
                 collection_data_out = collection_data_out %>%
                         as_tibble()

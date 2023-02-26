@@ -54,11 +54,13 @@ suppressMessages({
 
 # functions ---------------------------------------------------------------
 
+
 # bgg collection 
 source(here::here("src", "data", "bgg_collections", "bgg_collection_functions.R"))
 
 # bgg outcomes
 source(here::here("src", "data", "bgg_outcomes", "bgg_outcomes_functions.R"))
+
 
 # data --------------------------------------------------------------------
 
@@ -101,21 +103,23 @@ hurdle_model =
                 name = "hurdle_model"
         )
 
-# prep data
-tidied_games = 
-        tidy_games(analysis_games) %>%
-        split_games(.,
-                    end_train_year = 2021,
-                    min_ratings = 0)
+
+
+# prepare data for user analysis -----------------------------------------------------------------
 
 
 
-# prepare -----------------------------------------------------------------
 
+# function to prep games for user analysis by
+# applying same tidying steps used in modeling bgg outcomes
+# matching features of prototype for model
+# imputing averageweight
+# predicting with hurdle model
 
-# function to prep games for user analysis by first prepping, imputing, and then hurdling data
+# , imputing, and then hurdling data
 prep_impute_and_hurdle = 
         function(analysis_games,
+                 prototype,
                  end_train_year = 2021,
                  min_ratings = 30){
                 
@@ -135,7 +139,7 @@ prep_impute_and_hurdle =
                         # prep for model prototype using average
                         # also removes games that are missing yearpublished
                         prep_for_model_prototype(.,
-                                                 prototype = average_model$prototype) %>%
+                                                 prototype = prototype) %>%
                         # impute missingness in averageweight
                         impute_averageweight()
                 
@@ -166,7 +170,22 @@ prep_impute_and_hurdle =
 
 # full set of games meeting criteria for inclusion
 games_prepped = 
-        prep_impute_and_hurdle(analysis_games)
+        prep_impute_and_hurdle(analysis_games,
+                               averageweight_model$prototype)
+
+
+
+
+
+rm(prep_for_model_prototype,
+   split_games,
+   hurdle_model,
+   average_model,
+   averageweight_model,
+   deployed_board)
+
+
+
 
 
 
