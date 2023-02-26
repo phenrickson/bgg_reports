@@ -31,7 +31,7 @@ estimate_bayesaverage = function(data,
 }
 
 # function to prep incoming games for models
-convert_to_model_prototype = function(data,
+prep_for_model_prototype = function(data,
                               prototype) {
         
         # mechanics
@@ -136,11 +136,11 @@ convert_to_model_prototype = function(data,
                 filter(!is.na(yearpublished)) %>%
                 # set yearpublished to numeric
                 mutate(yearpublished = as.numeric(yearpublished)) %>%
-                # get description
-                left_join(., 
-                          game_descriptions %>%
-                                  select(game_id, description),
-                          by = c("game_id")) %>%
+                # # get description
+                # left_join(., 
+                #           game_descriptions %>%
+                #                   select(game_id, description),
+                #           by = c("game_id")) %>%
                 # template
                 transmute(game_id,
                           name,
