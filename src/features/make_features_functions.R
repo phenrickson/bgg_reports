@@ -289,6 +289,7 @@ create_categorical_variables = function(train_games) {
                 filter(!grepl("Unreleased", value)) %>%
                 filter(!grepl("Upcoming Releases", value)) %>%
                 filter(!grepl("Components Game Trayzinside", value)) %>%
+                filter(!grepl("Spieleschmiede|Verkami|Indiegogo", value)) %>%
                 # min games filter
                 group_by(id) %>%
                 mutate(n_games = n_distinct(game_id)) %>%
