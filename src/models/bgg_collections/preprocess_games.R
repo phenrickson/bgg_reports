@@ -1,82 +1,10 @@
-# what: train models for user(s) bgg collection
-
-
-# packages ----------------------------------------------------------------
-
-
-# load core packages needed for modeling
-suppressPackageStartupMessages({
-        
-        # tidyverse/modeling
-        library(tidyverse)
-        library(tidymodels)
-        library(tidyselect)
-        
-        # tidymodels preferences
-        tidymodels_prefer()
-        
-        # recipes and workflows
-        library(recipes)
-        library(workflows)
-        library(workflowsets)
-        
-        # additional
-        library(magrittr)
-        library(broom.mixed)
-        library(data.table)
-        library(tidytext)
-        library(conflicted)
-        library(lubridate)
-        
-        # ggplot
-        library(ggforce)
-        library(ggthemes)
-        library(ggforce)
-        library(ggfortify)
-        
-        # pins
-        library(pins)
-        
-}
-)
-
-# conflicts
-suppressMessages({
-        conflict_prefer("year", "lubridate")
-        conflict_prefer("quarter", "lubridate")
-        conflict_prefer("set_names", "magrittr")
-        conflict_prefer("flatten", "purrr")
-        conflict_prefer("tune", "tune")
-        conflict_prefer("plotly", "layout")
-})
-
-
-
-# functions ---------------------------------------------------------------
-
-
-# bgg collection 
-source(here::here("src", "data", "bgg_collections", "bgg_collection_functions.R"))
-
-# bgg outcomes
-source(here::here("src", "data", "bgg_outcomes", "bgg_outcomes_functions.R"))
-
-
-# data --------------------------------------------------------------------
-
-
-# bgg data
-# load tables used in modeling
-# local version
-load(here::here("data", "local", "analysis_games_tables.Rdata"))
-
-# # query from gcp (and update local)
-# source(here::here("pull_analysis_games_tables.R"))
-
+# what: preprocess games data for use with modeling user collections
 
 
 # models ------------------------------------------------------------------
 
+
+message('loading models for imputing bgg outcomes...')
 
 # board of pre trained models
 deployed_board = board_folder(here::here("models", "deployed"))
@@ -107,8 +35,7 @@ hurdle_model =
 
 # prepare data for user analysis -----------------------------------------------------------------
 
-
-
+message('prepping and imputing games...')
 
 # function to prep games for user analysis by
 # applying same tidying steps used in modeling bgg outcomes
@@ -146,7 +73,9 @@ prep_impute_and_hurdle =
                 # now predict with hurdle model
                 games_hurdle = 
                         hurdle_model %>%
+                        # predict (via augment)
                         augment(
+                                # prep for hurdle
                                 hurdle_prep(
                                         games_imputed
                                 )
@@ -159,10 +88,16 @@ prep_impute_and_hurdle =
                 # join back up
                 out = 
                         games_imputed %>%
+                        # join with hurdle preds
                         left_join(.,
                                   games_hurdle,
                                   by = c("game_id", "name", "yearpublished")
                         )
+                
+                # keep and nest prepped features
+                out = out %>%
+                        select(game_id, name, yearpublished, averageweight, .pred_hurdle) %>%
+                        nest(prepped = c(averageweight, .pred_hurdle))
                 
                 return(out)
                 
@@ -171,20 +106,39 @@ prep_impute_and_hurdle =
 # full set of games meeting criteria for inclusion
 games_prepped = 
         prep_impute_and_hurdle(analysis_games,
-                               averageweight_model$prototype)
+                               average_model$prototype)
 
+message('games preprocessing complete.')
 
+# save to local layer
+pins::pin_write(processed_board,
+          games_prepped,
+          description = 'data with imputed and predicted outcomes for user modeling')
 
-
-
+# remove objects
 rm(prep_for_model_prototype,
+   analysis_games,
+   drop_games,
+   game_artists,
+   game_categories,
+   game_compilations,
+   game_descriptions,
+   game_designers,
+   game_families,
+   game_images,
+   game_implementations,
+   game_mechanics,
+   game_playercounts,
+   game_publishers,
+   unreleased_games,
    split_games,
    hurdle_model,
    average_model,
    averageweight_model,
    deployed_board)
 
-
+# clear up memory
+gc()
 
 
 

@@ -182,8 +182,7 @@ xgb_spec <-
                 trees = 500,
                 min_n = tune(),
                 sample_size = tune(),
-                learn_rate = tune(),
-                tree_depth = tune(),
+                tree_depth = 10,
                 stop_iter = 50) %>%
         set_mode("regression") %>%
         set_engine("xgboost",
