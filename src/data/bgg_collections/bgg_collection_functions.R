@@ -2,7 +2,7 @@
 # via bggAnalytics
 
 get_user_collection <-
-        function(username_string) {
+        function(username) {
                 
                 require(bggAnalytics)
                 
@@ -35,18 +35,18 @@ get_user_collection <-
                                 })
                         }
                         
-                        message('search completed')
+                        message('search completed...')
                         
                         return(retval)
                         
                         
                 }
                 
-                message(paste('searching for bgg collection for', username_string))
+                message(paste('searching for bgg collection for:', username))
                 
                 # search for collection up to 10 times; sleep for 10 seconds between requests
                 collection_obj = 
-                        retry(bggCollection$new(username = username_string),
+                        retry(bggCollection$new(username = username),
                               maxErrors = 10,
                               sleep = 10)
                 
@@ -66,11 +66,11 @@ get_user_collection <-
                                                          "wishlist",
                                                          "wishlistpriority"))
                 
-                message(paste(nrow(collection_obj$data), 'records found in bgg collection for', username_string))
+              #  message(paste(nrow(collection_obj$data), 'records found in bgg collection for', username))
                 
                 # convert to dataframe
                 collection_data<-collection_obj$data %>%
-                        transmute(username = username_string,
+                        transmute(username = username,
                                   url = collection_obj$api_url,
                                   load_ts = collection_obj$timestamp,
                                   game_id = objectid,
@@ -93,7 +93,7 @@ get_user_collection <-
                         # order by game id and then desc own
                         arrange(game_id, desc(own))
                 
-                message('deduplicating collection and returning')
+                message('removing duplicates from collection...')
                 
                 # check for duplicated game_ids
                 dupes = which(duplicated(collection_data$game_id)==T)
@@ -103,6 +103,8 @@ get_user_collection <-
                 } else {
                         collection_data_out = collection_data
                 }
+                
+                message(paste(nrow(collection_obj$data), 'records returned for', username))
                 
                 # convert to tibble
                 collection_data_out = collection_data_out %>%
