@@ -1,5 +1,10 @@
 # what: run all functions for modeling user collection
 
+# set values needed
+username = 'mrbananagrabber'
+end_train_year = 2020
+outcome = 'ever_owned'
+
 # 0 - read in processed version of games 
 source(here::here("src", "models", "bgg_collections", "setup.R"))
 
@@ -11,10 +16,6 @@ source(here::here("src", "models", "bgg_collections", "setup.R"))
 games_prepped = 
         pins::pin_read(processed_board,
           name = "games_prepped")
-
-# set values needed
-username = 'GOBBluth89'
-end_train_year = 2020
 
 # 1 - load user collection
 source(here::here("src", "models", "bgg_collections", "load_user_collection.R"))
@@ -28,6 +29,9 @@ source(here::here("src", "models", "bgg_collections", "selecting_user_features.R
 # 4 - finalize user data
 source(here::here("src", "models", "bgg_collections", "finalize_user_data.R"))
 
-# 5 - model user collection
+# 6 - tune models on user collection
 source(here::here("src", "models", "bgg_collections", "model_user_collection.R"))
+
+# 7 - finalize fits
+source(here::here("src", "models", "bgg_collections", "finalize_user_models.R"))
 

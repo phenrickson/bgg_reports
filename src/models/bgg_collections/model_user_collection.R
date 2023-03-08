@@ -2,7 +2,9 @@
 
 # data splitting --------------------------------------------------------------
 
-outcome = 'ever_owned'
+message(paste("training models for", username, "on", "outcome"))
+
+message("creating train/valid split...")
 
 # training set for user model
 train_games = 
@@ -21,9 +23,9 @@ train_games =
 valid_games = 
         games_with_user_collection %>%
         # filter to games published through end train year
-        filter(yearpublished > end_train_year & yearpublished <= end_train_year +1) %>%
+        filter(yearpublished > end_train_year & yearpublished <= end_train_year +2) %>%
         # filter to only games above specific hurdle
-        filter(.pred_hurdle > .25) %>%
+        filter(.pred_hurdle > .25 | !is.na(bayesaverage)) %>%
         # reorder
         select(username, everything())
 
@@ -31,7 +33,7 @@ valid_games =
 test_games = 
         games_with_user_collection %>%
         # filter to games published through end train year
-        filter(yearpublished > end_train_year+1) %>%
+        filter(yearpublished > end_train_year+2) %>%
         select(username, everything())
 
 # make splits
@@ -59,6 +61,7 @@ test_split = make_splits(
 
 # create recipes ------------------------------------------------------------------
 
+message("creating recipes...")
 
 # basic recipe setup
 base_recipe_func = function(data,
@@ -73,7 +76,7 @@ base_recipe_func = function(data,
                                "image",
                                "thumbnail",
                                "description",
-                               "load_ts",
+                              # "load_ts",
                                "average",
                                "usersrated",
                                "averageweight",
@@ -93,8 +96,10 @@ base_recipe_func = function(data,
                                "wanttoplay",
                                "wanttobuy",
                                "wishlist",
-                               "wishlistpriority",
-                               "username_load_ts"),
+                               "wishlistpriority"
+                               #,
+                            #   "username_load_ts"
+                               ),
                         new_role = "id") %>%
                 # set prediction from hurdle model as an id
                 update_role(
@@ -244,7 +249,16 @@ glmnet_grid =
                 levels = 10
         )
 
-# xgb for classification
+
+# cart for classification
+cart_class_spec <-
+        decision_tree(
+                cost_complexity = tune(),
+                tree_depth = tune(),
+                min_n = tune()
+        ) %>%
+        set_mode("classification") %>%
+        set_engine("rpart")
 
 # xgb for class
 xgb_class_spec <-
@@ -259,6 +273,24 @@ xgb_class_spec <-
         set_mode("classification") %>%
         set_engine("xgboost",
                    eval_metric = 'logloss')
+
+# random forest
+rf_class_spec = 
+        rand_forest(trees = 500,
+                    mtry = tune()) %>%
+        set_mode("classification") %>%
+        set_engine("ranger")
+
+# lightgbm
+library(bonsai)
+lightgbm_class_spec <-
+        parsnip::boost_tree(
+                mode = "classification",
+                trees = 500,
+                min_n = tune(),
+                tree_depth = tune(),
+        ) %>%
+        set_engine("lightgbm", objective = "binary")
 
 # create tuning grid
 # tune_grid =
@@ -327,12 +359,12 @@ trees_recipe = base_recipe_func(data = train_games,
                                   outcome =  outcome) %>%
         # basic preprocessing
         preproc_recipe_func() %>%
-        # normalization
-        norm_recipe_func() %>%
         check_missing(all_predictors())
 
                           
 # create workflows --------------------------------------------------------
+
+message("creating workflows...")
 
 # workflow set
 user_wflow_set =
@@ -340,24 +372,19 @@ user_wflow_set =
                 preproc = list(
                         preproc = preproc_recipe,
                         corr = corr_recipe,
+                        trees = trees_recipe,
+                        trees = trees_recipe,
+                        trees = trees_recipe,
                         trees = trees_recipe),
                 models = list(
                         glmnet = glmnet_class_spec,
                         glm = glm_class_spec,
-                        xgb = xgb_class_spec
-                ),
+                        xgb = xgb_class_spec,
+                        cart = cart_class_spec,
+                        rf = rf_class_spec,
+                        lightgbm = lightgbm_class_spec),
                 cross = F
         )
-
-# glm_wflow = 
-#         workflow() %>%
-#         add_recipe(corr_recipe) %>%
-#         add_model(glm_class_spec)
-# 
-# glmnet_wflow = 
-#         workflow() %>%
-#         add_recipe(preproc_recipe) %>%
-#         add_model(glmnet_class_spec)
 
 # training control --------------------------------------------------------
 
@@ -403,7 +430,6 @@ race_ctrl =
 
 # training ----------------------------------------------------------------
 
-
 # set parallel
 library(doParallel)
 all_cores <- parallel::detectCores(logical = FALSE)
@@ -411,20 +437,10 @@ doMC::registerDoMC(cores = all_cores)
 
 
 # system.time({
-# glm_rs = 
-#         glm_wflow %>%
-#         fit_resamples(
-#                 resamples =   user_folds,
-#                 metrics = tune_metrics,
-#                 control = race_ctrl
-#         )
-# })
-
-# system.time({
-#         glmnet_rs = 
-#                 glmnet_wflow %>%
-#                 finalize_workflow(parameters = tibble("penalty" = 0.001)) %>%
-#                 fit_resamples(
+#         lightgbm_rs =
+#                 user_wflow_set %>%
+#                 extract_workflow(id = "trees_lightgbm") %>%
+#                 finetune::tune_race_anova(
 #                         resamples =   user_folds,
 #                         metrics = tune_metrics,
 #                         control = race_ctrl
@@ -496,6 +512,8 @@ tictoc::toc()
 
 # results -----------------------------------------------------------------
 
+message("ranking workflows from resampling...")
+
 workflow_set_rs %>%
         rank_results(select_best = T) %>%
         ggplot(aes(x=mean,
@@ -507,8 +525,14 @@ workflow_set_rs %>%
         geom_pointrange()+
         theme_bw()
 
+workflow_set_rs %>%
+        rank_results(select_best = T) %>%
+        select(rank, wflow_id, model, .metric, mean, std_err, n)
+
 
 # predictions -------------------------------------------------------------
+
+message("collecting predictions from resampling...")
 
 preds_rs = 
         workflow_set_rs %>%
@@ -517,19 +541,28 @@ preds_rs =
                   train_games %>%
                           mutate(.row = row_number()) %>%
                           select(.row, game_id, name, yearpublished)) %>%
-        select(.row, wflow_id, game_id, name, yearpublished, .pred_yes) 
+        select(.row, wflow_id, game_id, name, yearpublished, .pred_yes, !!outcome)
 
-preds_rs %>%
-        filter(wflow_id == 'trees_xgb') %>%
-        arrange(desc(.pred_yes)) %>%
-        print(n = 25)
-        
-        
+# preds_rs %>%
+#         filter(wflow_id == 'trees_xgb') %>%
+#         arrange(desc(.pred_yes)) %>%
+#         print(n = 25)
+#         
+# 
+# preds_rs %>%
+#         filter(wflow_id == 'preproc_glmnet') %>%
+#         arrange(desc(.pred_yes)) %>%
+#         print(n = 25)
+#         
         # spread(wflow_id, .pred_yes) %>%
         # arrange(desc(preproc_glmnet)) %>%
         # mutate(ensemble = (preproc_glmnet + trees_xgb) / 2) %>%
         # arrange(desc(ensemble))
 # best tune ---------------------------------------------------------------
+
+tune_metric = 'mn_log_loss'
+
+message("selecting best tuning parameters via ", tune_metric)
 
 best_tunes = 
         workflow_set_rs %>%
@@ -627,48 +660,64 @@ best_tunes =
 #         autoplot()+
 #         theme_bw()
 # 
-# preds %>%
-#         yardstick::pr_curve(ever_owned,
-#                              .pred_yes,
-#                              event_level = 'second') %>%
-#         autoplot()+
-#         theme_bw()
-# 
-# preds %>%
-#         yardstick::lift_curve(ever_owned,
-#                             .pred_yes,
-#                             event_level = 'second') %>%
-#         autoplot()+
-#         theme_bw()
+preds_rs %>% 
+        group_by(wflow_id) %>%
+        yardstick::pr_curve(ever_owned,
+                             .pred_yes,
+                             event_level = 'second') %>%
+        autoplot()+
+        theme_bw()+
+        facet_wrap(wflow_id ~.)+
+        guides(color = 'none')
+
+preds_rs %>%
+        group_by(wflow_id) %>%
+        yardstick::lift_curve(ever_owned,
+                            .pred_yes,
+                            event_level = 'second') %>%
+        autoplot()+
+        theme_bw()+
+        facet_wrap(wflow_id ~.)+
+        guides(color = 'none')
+
+preds_rs %>%
+group_by(wflow_id) %>%
+        yardstick::roc_curve(ever_owned,
+                              .pred_yes,
+                              event_level = 'second') %>%
+        autoplot()+
+        theme_bw()+
+        scale_color_viridis_d()
 # 
 # 
 # # calibration
-# preds %>%
-#         group_by(prob = plyr::round_any(.pred_yes, .05), 
-#                  ever_owned) %>%
-#         count() %>%
-#         group_by(prob) %>%
-#         mutate(prop = n / sum(n)) %>%
-#         mutate(total = sum(n)) %>%
-#         filter(ever_owned == 'yes') %>%
-#         ggplot(aes(x=prob,
-#                    size = total,
-#                    y = prop))+
-#         geom_point()+
-#         geom_line(lwd = 0.5)+
-#         coord_obs_pred()+
-#         geom_abline()+
-#         theme_minimal()
+preds_rs %>%
+        group_by(wflow_id, prob = plyr::round_any(.pred_yes, .05),
+                 ever_owned) %>%
+        count() %>%
+        group_by(wflow_id, prob) %>%
+        mutate(prop = n / sum(n)) %>%
+        mutate(total = sum(n)) %>%
+        filter(ever_owned == 'yes') %>%
+        ggplot(aes(x=prob,
+                   group = wflow_id,
+                   size = total,
+                   y = prop))+
+        geom_point()+
+        geom_line(lwd = 0.5)+
+        coord_obs_pred()+
+        geom_abline()+
+        theme_minimal()+
+        facet_wrap(wflow_id~.)
 # 
 # # 
-# workflow_set_rs %>%
-#         collect_predictions(select_best = T)  %>%
-#         group_by(wflow_id) %>%
-#         probably::cal_plot_windowed(ever_owned,
-#                                     .pred_yes,
-#                                   num_breaks = 10,
-#                                     event_level = 'second')+
-#         facet_wrap(wflow_id ~.)
+preds_rs %>%
+        group_by(wflow_id) %>%
+        probably::cal_plot_windowed(ever_owned,
+                                    .pred_yes,
+                                  window_size = 0.1,
+                                    event_level = 'second')+
+        facet_wrap(wflow_id ~.)
 
 # user_glmnet_rs %>%
 #         collect_predictions(parameters = best_glmnet_tune, select_best = T) %>%
@@ -683,14 +732,16 @@ best_tunes =
 #                                   window.size = .05,
 #                                   event_level = 'second')
 # 
-# preds %>% 
-#         probably::threshold_perf(ever_owned, .pred_yes, seq(0, 1, by = 0.1),
-#                        event_level = 'second') %>%
-#         filter(.metric != 'distance') %>%
-#         ggplot(aes(x=.threshold,y=.estimate, color = .metric))+
-#         geom_line()+
-#         scale_color_viridis_d() +
-#         theme_bw() 
+preds_rs %>%
+        group_by(wflow_id) %>%
+        probably::threshold_perf(ever_owned, .pred_yes, seq(0, 1, by = 0.1),
+                       event_level = 'second') %>%
+        filter(.metric != 'distance') %>%
+        ggplot(aes(x=.threshold,y=.estimate, color = .metric))+
+        geom_line()+
+        scale_color_viridis_d() +
+        theme_bw()+
+        facet_wrap(wflow_id ~.)
 # 
 # # examine
 # preds %>%
