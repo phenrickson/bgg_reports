@@ -245,9 +245,9 @@ params:
 
 <!-- # make a second split for the training, validation, and test -->
 <!-- test_split = make_splits( -->
-<!--         list(analysis =  -->
+<!--         list(analysis = -->
 <!--                      seq(nrow(games_train) + nrow(games_validation)), -->
-<!--              assessment =  -->
+<!--              assessment = -->
 <!--                      nrow(games_train) + nrow(games_validation) + seq(nrow(games_test))), -->
 <!--         bind_rows(games_train, -->
 <!--                   games_validation, -->
@@ -393,7 +393,7 @@ params:
 <!-- ```{r define models and workflows, warning=F, message=F} -->
 
 <!-- # penalized logistic regression -->
-<!-- glmnet_class_mod<-  -->
+<!-- glmnet_class_mod<- -->
 <!--         logistic_reg(penalty = tune::tune(), -->
 <!--                      mixture = 0.5) %>% -->
 <!--         set_engine("glmnet") -->
