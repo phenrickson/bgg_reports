@@ -1,12 +1,17 @@
 {
   "R": {
-    "Version": "4.1.2",
+    "Version": "4.1.0",
     "Repositories": [
       {
         "Name": "CRAN",
         "URL": "https://cloud.r-project.org"
       }
     ]
+  },
+  "Python": {
+    "Version": "3.9.6",
+    "Type": "virtualenv",
+    "Name": "./renv/python/virtualenvs/renv-python-3.9"
   },
   "Packages": {
     "BBmisc": {
@@ -334,6 +339,16 @@
         "Rcpp"
       ]
     },
+    "RcppTOML": {
+      "Package": "RcppTOML",
+      "Version": "0.2.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c232938949fcd8126034419cc529333a",
+      "Requirements": [
+        "Rcpp"
+      ]
+    },
     "Rdpack": {
       "Package": "Rdpack",
       "Version": "2.1.3",
@@ -587,6 +602,23 @@
       "Requirements": [
         "rlang",
         "vctrs"
+      ]
+    },
+    "bonsai": {
+      "Package": "bonsai",
+      "Version": "0.2.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "c086fa23dfeac2d2b95f758dfa917c3d",
+      "Requirements": [
+        "cli",
+        "dials",
+        "dplyr",
+        "glue",
+        "parsnip",
+        "purrr",
+        "rlang",
+        "tibble"
       ]
     },
     "bookdown": {
@@ -1701,12 +1733,6 @@
       "Version": "0.1.3",
       "Source": "Repository",
       "Repository": "CRAN",
-      "RemoteType": "standard",
-      "RemotePkgRef": "generics",
-      "RemoteRef": "generics",
-      "RemoteRepos": "https://cran.rstudio.com/",
-      "RemotePkgPlatform": "aarch64-apple-darwin20",
-      "RemoteSha": "0.1.3",
       "Hash": "15e9634c0fcd294799e9b2e929ed1b86",
       "Requirements": []
     },
@@ -3732,13 +3758,14 @@
     },
     "reticulate": {
       "Package": "reticulate",
-      "Version": "1.22",
+      "Version": "1.28",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "b34a8bb69005168078d1d546a53912b2",
+      "Hash": "86c441bf33e1d608db773cb94b848458",
       "Requirements": [
         "Matrix",
         "Rcpp",
+        "RcppTOML",
         "here",
         "jsonlite",
         "png",
@@ -4549,12 +4576,6 @@
       "Version": "1.1.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "RemoteType": "standard",
-      "RemotePkgRef": "tidyselect",
-      "RemoteRef": "tidyselect",
-      "RemoteRepos": "https://cran.rstudio.com/",
-      "RemotePkgPlatform": "aarch64-apple-darwin20",
-      "RemoteSha": "1.1.2",
       "Hash": "17f6da8cfd7002760a859915ce7eef8f",
       "Requirements": [
         "ellipsis",
