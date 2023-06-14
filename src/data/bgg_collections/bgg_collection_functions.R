@@ -1,52 +1,50 @@
 # get user collection data from bgg 
 # via bggAnalytics
 
+# function to keep retrying on error
+retry = function(expr, isError=function(x) "try-error" %in% class(x), 
+                 maxErrors=5,
+                 sleep=0) {
+        
+        attempts = 0
+        
+        retval = try(eval(expr), silent=T)
+        
+        while (isError(retval)) {
+                
+                attempts = attempts + 1
+                
+                if (attempts >= maxErrors) {
+                        msg = paste("too many attempts")
+                        stop(msg)
+                } else {
+                        paste("retry: no response in attempt", attempts, "of",  maxErrors)
+                        # flog.error(msg)
+                        message(msg)
+                }
+                if (sleep > 0) Sys.sleep(sleep)
+                
+                suppressWarnings({
+                        retval = try(eval(expr), silent = T)
+                })
+        }
+        
+        
+        return(retval)
+        
+        
+}
+
 get_user_collection <-
         function(username) {
                 
                 require(bggAnalytics)
                 
-                # function to keep retrying on error
-                retry = function(expr, isError=function(x) "try-error" %in% class(x), maxErrors=5, sleep=0) {
-                        
-                        require(futile.logger)
-                        require(utils)
-                        
-                        attempts = 0
-                        
-                        retval = try(eval(expr), silent=T)
-                        
-                        while (isError(retval)) {
-                                
-                                attempts = attempts + 1
-                                
-                                if (attempts >= maxErrors) {
-                                        msg = paste("too many attempts; stopping search")
-                                        stop(msg)
-                                } else {
-                                        msg = paste("retry: no response in attempt", attempts, "of",  maxErrors)
-                                       # flog.error(msg)
-                                        message(msg)
-                                }
-                                if (sleep > 0) Sys.sleep(sleep)
-                                
-                                suppressWarnings({
-                                        retval = try(eval(expr), silent = T)
-                                })
-                        }
-                        
-                        message('search completed...')
-                        
-                        return(retval)
-                        
-                        
-                }
-                
                 message(paste('searching for bgg collection for:', username))
                 
                 # search for collection up to 10 times; sleep for 10 seconds between requests
                 collection_obj = 
-                        retry(bggCollection$new(username = username),
+                        retry(bggAnalyticsbggCollection$new(username = username),
                               maxErrors = 10,
                               sleep = 10)
                 

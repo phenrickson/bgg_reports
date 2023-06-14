@@ -5,8 +5,7 @@ require(DBI)
 require(keyring)
 
 # get project credentials
-PROJECT_ID <- "gcp-analytics-326219"
-BUCKET_NAME <- "test-bucket"
+PROJECT_ID <- Sys.getenv("GCS_PROJECT_ID")
 
 # authenticate
 bq_auth(email = 'phil.henrickson@aebs.com')

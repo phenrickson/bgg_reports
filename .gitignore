@@ -38,6 +38,11 @@ data/
 !src/models/
 !data/processed
 
+# ignore previous website stuff, no longer needed
 index.html
 site_libs/
-gcp-analytics-326219-c76fe0dc89d8.json
+
+# ignore env file with gcs setup
+
+
+
